@@ -133,16 +133,23 @@ function test_opaque_cannot_be_generated() {
 	assert_sg_fails "opaque opaque1"
 }
 
+function test_password_generation_options() {
+	assert_sg_match "password password1 --length 12" '^.{12}$'
+	assert_sg_match "password password2 --length 32" '^.{32}$'
+}
+
 function test_password_persists() {
 	password="$($SECRETGARDEN password password1 --length 12)"
-	assert_match "$password" ".{12}"
+	assert_match "$password" '^.{12}$'
 	assert_sg_equal "password password1 --length 12" "$password"
 }
 
 function test_password_converges() {
 	password="$($SECRETGARDEN password password1 --length 12)"
 	assert_sg_equal "password password1 --length 12" "$password"
-	assert_sg_not_equal "password password1 --length 13" "$password"
+	password_converged="$($SECRETGARDEN password password1 --length 13)"
+	assert_match "$password_converged" '^.{13}$'
+	assert_sg_not_equal "$password_converged" "$password"
 }
 
 function test_password_generation_can_be_disabled() {
@@ -153,6 +160,17 @@ function test_password_convergence_can_be_disabled() {
 	password="$($SECRETGARDEN password password1 --length 12)"
 	assert_sg_equal "password password1 --length 12" "$password"
 	assert_sg_equal "password password1 --generate=once --length 13" "$password"
+}
+
+function test_ssh_key_separate_generation() {
+	private_key="$($SECRETGARDEN ssh-key key1)"
+	public_key="$($SECRETGARDEN ssh-key key1 --public)"
+
+	if ! derived_public_key="$(ssh-keygen -y -f <(echo "$private_key"))"; then
+		exit 1
+	fi
+
+	assert_equal "$(ssh-keygen -y -f <(echo "$private_key"))" "$public_key"
 }
 
 ## Test running loop
