@@ -22,6 +22,13 @@ SECRETGARDEN="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD/secretgarden)"
 # Create a temporary directory to run tests in that we'll delete later.
 export TEST_FILE="$(realpath ${BASH_SOURCE[0]})"
 export TEST_DIR="$(mktemp -d)"
+
+if [[ -n ${RUST:-} ]]; then
+	cargo build
+	cp target/debug/secretgarden ${TEST_DIR}
+	SECRETGARDEN=${TEST_DIR}/secretgarden
+fi
+
 cd $TEST_DIR
 trap "rm -rf $TEST_DIR" exit
 
@@ -180,12 +187,16 @@ for test_function in $(awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed
 	if result=$(cd "$(mktemp -d -p $TEST_DIR)"; exec 2>&1; $test_function); then
 		echo "$(success_text '[OK]') $test_name" 
 
-		if [[ -n ${TEST_VERBOSE:-} ]]; then
+		if [[ ${TEST_VERBOSITY:-} -ge 1 ]]; then
 			echo "$result" | sed -e 's/^/    /'
 		fi
 	else
 		echo "$(error_text '[FAILED]') $test_name"
-		echo "$result" | sed -e 's/^/    /'
-		exit 1
+		if [[ ${TEST_VERBOSITY:-} -ge 0 ]]; then
+			echo "$result" | sed -e 's/^/    /'
+		fi
+		if [[ -z ${KEEP_GOING:-} ]]; then
+			exit 1
+		fi
 	fi
 done
