@@ -180,6 +180,12 @@ function test_ssh_key_separate_generation() {
 	assert_equal "$(ssh-keygen -y -f <(echo "$private_key"))" "$public_key"
 }
 
+function test_values_not_stored_in_plaintext() {
+	assert_sg "set opaque opaque1 opaqueval"
+
+	! grep opaqueval secrets.json.gpg
+}
+
 ## Test running loop
 for test_function in $(awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed -e 's/()//'); do
 	test_name="$(sed -e 's/^test_//;s/_/ /g' <<<"$test_function")"
