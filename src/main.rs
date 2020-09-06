@@ -76,7 +76,6 @@ impl SecretStore {
         .expect("Failed to deserialize options");
 
         if let Some(secret) = secrets.get(&common_opts.name) {
-            eprintln!("{:#?}", secret.options);
             if secret.options == serialized_opts || common_opts.generate == GenerateOpt::Once {
                 return secret.value.to_string();
             }
