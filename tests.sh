@@ -183,7 +183,7 @@ function test_ssh_key_separate_generation() {
 function test_values_not_stored_in_plaintext() {
 	assert_sg "set opaque opaque1 opaqueval"
 
-	! grep opaqueval secrets.json.gpg
+	! grep opaqueval secret*
 }
 
 ## Test running loop
