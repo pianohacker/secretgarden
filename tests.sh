@@ -66,12 +66,12 @@ function success_text() {
 
 function _assert_failed() {
 	echo "assertion failed at line ${BASH_LINENO[2]}: $1"
+	exit 1
 }
 
 function assert_equal() {
 	if [[ "$1" != "$2" ]]; then
 		_assert_failed "'$1' != '$2'" 
-		exit 1
 	fi
 }
 
@@ -82,7 +82,6 @@ function assert_sg_equal() {
 function assert_not_equal() {
 	if [[ "$1" == "$2" ]]; then
 		_assert_failed "'$1' == '$2'" 
-		exit 1
 	fi
 }
 
@@ -93,7 +92,6 @@ function assert_sg_not_equal() {
 function assert_match() {
 	if ! [[ "$1" =~ $2 ]]; then
 		_assert_failed "'$1' !~ /$2/" 
-		exit 1
 	fi
 }
 
@@ -102,11 +100,11 @@ function assert_sg_match() {
 }
 
 function assert_sg() {
-	$SECRETGARDEN $1 || exit 1
+	$SECRETGARDEN $1 || _assert_failed "secretgarden succeeds with flags '$1'"
 }
 
 function assert_sg_fails() {
-	! $SECRETGARDEN $1
+	! $SECRETGARDEN $1 || _assert_failed "secretgarden fails with flags '$1'"
 }
 
 ## Tests
@@ -160,7 +158,9 @@ function test_password_converges() {
 }
 
 function test_password_generation_can_be_disabled() {
-	assert_sg_fails "password password1 --generate=no"
+	assert_sg_fails "password password1 --generate=never"
+	assert_sg "password password1"
+	assert_sg "password password1 --generate=never"
 }
 
 function test_password_convergence_can_be_disabled() {
@@ -178,6 +178,31 @@ function test_ssh_key_separate_generation() {
 	fi
 
 	assert_equal "$(ssh-keygen -y -f <(echo "$private_key"))" "$public_key"
+}
+
+function test_ssh_keys_can_be_generated_with_any_type() {
+	# This could be a loop, but SSH key type IDs have a lot of subtle variation...
+	assert_match "$($SECRETGARDEN ssh-key key-rsa --public --type rsa)" "^ssh-rsa "
+	assert_match "$($SECRETGARDEN ssh-key key-dsa --public --type dsa)" "^ssh-dss "
+	assert_match "$($SECRETGARDEN ssh-key key-ecdsa --public --type ecdsa)" "^ecdsa-sha2-nistp256 "
+	assert_match "$($SECRETGARDEN ssh-key key-ed-25519 --public --type ed-25519)" "^ssh-ed25519 "
+}
+
+function _assert_ssh_key_bits() {
+	assert_match "$(ssh-keygen -lf <(echo "$1"))" "^$2 "
+}
+
+function test_ssh_keys_can_be_generated_with_custom_bits() {
+	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-rsa --public --type rsa --bits 4096)" 4096
+	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-ecdsa --public --type ecdsa --bits 521)" 521
+}
+
+function test_ssh_key_types_with_fixed_lengths_reject_custom_bits() {
+	assert_sg "ssh-key key-ed25519 --type ed-25519"
+	assert_sg_fails "ssh-key key-ed25519-256 --type ed-25519 --bits 256"
+
+	assert_sg "ssh-key key-dsa --type dsa"
+	assert_sg_fails "ssh-key key-dsa-2048 --type dsa --bits 2048"
 }
 
 function test_values_not_stored_in_plaintext() {

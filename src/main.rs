@@ -338,7 +338,7 @@ enum SshKeyType {
     Rsa,
     Dsa,
     Ecdsa,
-    #[clap(alias = "ed-25519")]
+    #[clap(name = "ed-25519")]
     Ed25519,
 }
 
