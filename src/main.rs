@@ -333,7 +333,7 @@ fn generate_opaque(_: &OpaqueOpts) -> String {
     panic!("Cannot generate opaque value");
 }
 
-#[derive(Clap, Serialize, Deserialize)]
+#[derive(Clap, Serialize, Deserialize, PartialEq)]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -352,8 +352,8 @@ struct SshKeyOpts {
     public: bool,
     #[clap(arg_enum, short, long, default_value = "ed-25519")]
     type_: SshKeyType,
-    #[clap(short, long, default_value = "0")]
-    bits: usize,
+    #[clap(short, long)]
+    bits: Option<usize>,
 }
 
 impl WithCommonOpts for SshKeyOpts {
@@ -383,7 +383,16 @@ fn generate_ssh_key(o: &SshKeyOpts) -> String {
         SshKeyType::Ed25519 => keys::KeyType::ED25519,
     };
 
-    let key_pair = keys::KeyPair::generate(key_type, o.bits).expect("Failed to generate SSH key");
+    if o.type_ == SshKeyType::Dsa && o.bits.unwrap_or(1024) != 1024 {
+        panic!("DSA SSH keys can only have 1024 bits")
+    }
+
+    if o.type_ == SshKeyType::Ed25519 && o.bits.is_some() {
+        panic!("Bits cannot be specified for ED25519 SSH keys")
+    }
+
+    let key_pair =
+        keys::KeyPair::generate(key_type, o.bits.unwrap_or(0)).expect("Failed to generate SSH key");
 
     key_pair
         .serialize_openssh(None, cipher::Cipher::Null)
