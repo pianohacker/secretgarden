@@ -17,3 +17,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sodiumoxide = "0.2"
 tempfile = "3.1"
+
+[dependencies.openssl-sys]
+version = "0.9"
+features = [ "vendored" ]
