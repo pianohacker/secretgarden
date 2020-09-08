@@ -65,7 +65,13 @@ function success_text() {
 }
 
 function _assert_failed() {
-	echo "assertion failed at line ${BASH_LINENO[2]}: $1"
+	echo "assertion failed: $1"
+
+	echo "backtrace:"
+	for i in $(seq 1 $(( ${#FUNCNAME[*]} - 1 ))); do
+		echo "  ${FUNCNAME[$i]}:${BASH_LINENO[$(( i - 1 ))]}"
+	done
+
 	exit 1
 }
 
@@ -107,6 +113,12 @@ function assert_sg_fails() {
 	! $SECRETGARDEN $1 || _assert_failed "secretgarden fails with flags '$1'"
 }
 
+function assert_sg_fails_matching() {
+	error_text="$(! $SECRETGARDEN $1 2>&1 >/dev/null)" || _assert_failed "secretgarden fails with flags '$1'"
+
+	assert_match "$error_text" "$2"
+}
+
 ## Tests
 function test_setting_opaque() {
 	assert_sg "set opaque opaque1 opaqueval"
@@ -125,6 +137,10 @@ function test_setting_opaque_from_base64() {
 	assert_sg_equal "opaque opaque1" "base64test"
 	echo 'YmFzZTY0c3RkaW4=' |  assert_sg "set opaque opaque2 --base64"
 	assert_sg_equal "opaque opaque2" "base64stdin"
+}
+
+function test_setting_opaque_from_base64_fails_with_concise_error() {
+	assert_sg_fails_matching "set opaque opaque1 --base64 A" '^Error: .* base64'
 }
 
 function test_getting_opaque_as_base64() {

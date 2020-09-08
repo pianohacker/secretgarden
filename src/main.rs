@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context, Result as AHResult};
 use argon2;
 use bincode;
 use clap::Clap;
@@ -57,8 +58,8 @@ impl SecretStore {
         argon2_config
     }
 
-    fn _decrypt<P: AsRef<Path>>(path: P) -> Vec<u8> {
-        let mut file = File::open(path).expect("Failed to open secrets file");
+    fn _decrypt<P: AsRef<Path>>(path: P) -> AHResult<Vec<u8>> {
+        let mut file = File::open(path).context("Failed to open secrets file")?;
 
         let mut magic_buf = [0u8; MAGIC.len()];
         if file.read(&mut magic_buf).is_err() || magic_buf != MAGIC {
@@ -66,7 +67,7 @@ impl SecretStore {
         }
 
         let secrets_wrapper: SecretsEncWrapper =
-            bincode::deserialize_from(file).expect("Could not read secrets file");
+            bincode::deserialize_from(file).context("Could not read secrets file")?;
 
         // TODO: replace with signature via SSH key
         let signed_output = secrets_wrapper.signed_input;
@@ -76,19 +77,21 @@ impl SecretStore {
             &secrets_wrapper.argon2_salt,
             &Self::_argon2_config(),
         )
-        .expect("Failed to derive encryption key");
+        .context("Failed to derive encryption key")?;
 
+        // We have to use map_err/anyhow! because secretbox::open returns a Result<..., ()>, which
+        // does not have a context() implementation.
         secretbox::open(
             &secrets_wrapper.contents,
             &secretbox::Nonce::from_slice(&secrets_wrapper.secretbox_nonce).unwrap(),
             &secretbox::Key::from_slice(&argon2_hash).unwrap(),
         )
-        .expect("Failed to decrypt secrets")
+        .map_err(|_| anyhow!("Failed to decrypt secrets"))
     }
 
-    fn _load_secrets(&mut self) -> &mut SecretMap {
+    fn _load_secrets(&mut self) -> AHResult<&mut SecretMap> {
         if let Some(ref mut _secrets) = self._secrets {
-            return _secrets;
+            return Ok(_secrets);
         }
 
         let mut _secrets;
@@ -96,10 +99,10 @@ impl SecretStore {
         let secrets_location = Path::new(DEFAULT_FILENAME);
 
         if secrets_location.is_file() {
-            let existing_contents = Self::_decrypt(secrets_location);
+            let existing_contents = Self::_decrypt(secrets_location)?;
 
-            let existing_secrets: SecretFile =
-                serde_json::from_slice(&existing_contents).expect("Could not parse secrets JSON");
+            let existing_secrets: SecretFile = serde_json::from_slice(&existing_contents)
+                .context("Could not parse secrets JSON")?;
 
             _secrets = existing_secrets.secrets;
         } else {
@@ -107,17 +110,17 @@ impl SecretStore {
         }
 
         self._secrets = Some(_secrets);
-        self._secrets.as_mut().unwrap()
+        Ok(self._secrets.as_mut().unwrap())
     }
 
-    fn _store_secrets(&mut self) {
+    fn _store_secrets(&mut self) -> AHResult<()> {
         let mut f =
-            tempfile::NamedTempFile::new().expect("Failed to open temporary file for output");
+            tempfile::NamedTempFile::new().context("Failed to open temporary file for output")?;
 
         let serialized_secrets = serde_json::to_vec(&SecretFile {
             secrets: self._secrets.to_owned().unwrap(),
         })
-        .expect("Failed to serialize secrets");
+        .context("Failed to serialize secrets")?;
 
         let mut rng = rand::thread_rng();
 
@@ -131,7 +134,7 @@ impl SecretStore {
         let signed_output = signed_input;
 
         let argon2_hash = argon2::hash_raw(&signed_output, &argon2_salt, &Self::_argon2_config())
-            .expect("Failed to derive encryption key");
+            .context("Failed to derive encryption key")?;
 
         let encrypted_contents = secretbox::seal(
             &serialized_secrets,
@@ -153,7 +156,9 @@ impl SecretStore {
         .unwrap();
 
         f.persist(DEFAULT_FILENAME)
-            .expect("Failed to move new secrets to final location");
+            .context("Failed to move new secrets to final location")?;
+
+        Ok(())
     }
 
     fn get_or_generate<OptsT: WithCommonOpts>(
@@ -161,25 +166,25 @@ impl SecretStore {
         f: impl Fn(&OptsT) -> String,
         secret_type: &str,
         opts: &OptsT,
-    ) -> String {
-        let secrets = self._load_secrets();
+    ) -> AHResult<String> {
+        let secrets = self._load_secrets().unwrap();
         let common_opts = opts.common_opts();
         let serialized_opts: serde_json::Value = serde_json::from_str(
-            &serde_json::to_string(opts).expect("Failed to serialize options"),
+            &serde_json::to_string(opts).context("Failed to serialize options")?,
         )
-        .expect("Failed to deserialize options");
+        .context("Failed to deserialize options")?;
 
         if let Some(secret) = secrets.get(&common_opts.name) {
             if secret.options == serialized_opts || common_opts.generate == GenerateOpt::Once {
-                return secret.value.to_string();
+                return Ok(secret.value.to_string());
             }
         }
 
         if common_opts.generate == GenerateOpt::Never {
-            panic!(
+            return Err(anyhow!(
                 "Secret {} does not exist and generation is disabled",
                 common_opts.name
-            );
+            ));
         }
 
         let value = f(opts);
@@ -191,13 +196,13 @@ impl SecretStore {
                 options: serialized_opts.clone(),
             },
         );
-        self._store_secrets();
+        self._store_secrets()?;
 
-        value
+        Ok(value)
     }
 
-    fn set(&mut self, secret_type: String, key: String, value: String) {
-        let secrets = self._load_secrets();
+    fn set(&mut self, secret_type: String, key: String, value: String) -> AHResult<()> {
+        let secrets = self._load_secrets().unwrap();
 
         secrets.insert(
             key,
@@ -207,7 +212,9 @@ impl SecretStore {
                 options: serde_json::Value::Object(serde_json::Map::new()),
             },
         );
-        self._store_secrets();
+        self._store_secrets()?;
+
+        Ok(())
     }
 }
 
@@ -266,14 +273,16 @@ fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
     generator: impl Fn(&OptsT) -> String,
     transformer: impl Fn(String, &OptsT) -> String,
     opts: &OptsT,
-) {
-    let mut value = store.get_or_generate(generator, secret_type, &opts);
+) -> AHResult<()> {
+    let mut value = store.get_or_generate(generator, secret_type, &opts)?;
 
     if opts.common_opts().base64 {
         value = base64::encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
     println!("{}", transformer(value, opts));
+
+    Ok(())
 }
 
 fn run_secret_type<OptsT: WithCommonOpts>(
@@ -281,7 +290,7 @@ fn run_secret_type<OptsT: WithCommonOpts>(
     secret_type: &str,
     generator: impl Fn(&OptsT) -> String,
     opts: &OptsT,
-) {
+) -> AHResult<()> {
     run_secret_type_with_transform(store, secret_type, generator, |x, _| x, opts)
 }
 
@@ -411,7 +420,7 @@ struct SetOpts {
     base64: bool,
 }
 
-fn run_set(store: &mut SecretStore, s: SetOpts) {
+fn run_set(store: &mut SecretStore, s: SetOpts) -> AHResult<()> {
     let mut value: String;
 
     match s.value {
@@ -421,7 +430,7 @@ fn run_set(store: &mut SecretStore, s: SetOpts) {
 
             io::stdin()
                 .read_to_string(&mut value)
-                .expect("Failed to read value from stdin");
+                .context("Failed to read value from stdin")?;
 
             value = value.trim_end().to_string();
         }
@@ -429,39 +438,31 @@ fn run_set(store: &mut SecretStore, s: SetOpts) {
 
     if s.base64 {
         value = base64::decode(value)
-            .expect("Failed to decode provided value as base64")
+            .context("Failed to decode provided value as base64")?
             .iter()
             .map(|c| *c as char)
             .collect();
     }
 
-    store.set(s.type_, s.name, value);
+    store.set(s.type_, s.name, value)
 }
 
-fn main() {
-    sodiumoxide::init().expect("Failed to initialize sodiumoxide");
+fn main() -> AHResult<()> {
+    sodiumoxide::init().map_err(|_| anyhow!("Failed to initialize sodiumoxide"))?;
 
     let opt = Opts::parse();
     let mut store = SecretStore::default();
 
     match opt.subcmd {
-        SubCommand::Password(o) => {
-            run_secret_type(&mut store, "password", generate_password, &o);
-        }
-        SubCommand::Opaque(o) => {
-            run_secret_type(&mut store, "opaque", generate_opaque, &o);
-        }
-        SubCommand::SshKey(o) => {
-            run_secret_type_with_transform(
-                &mut store,
-                "ssh-key",
-                generate_ssh_key,
-                transform_ssh_key,
-                &o,
-            );
-        }
-        SubCommand::Set(o) => {
-            run_set(&mut store, o);
-        }
+        SubCommand::Password(o) => run_secret_type(&mut store, "password", generate_password, &o),
+        SubCommand::Opaque(o) => run_secret_type(&mut store, "opaque", generate_opaque, &o),
+        SubCommand::SshKey(o) => run_secret_type_with_transform(
+            &mut store,
+            "ssh-key",
+            generate_ssh_key,
+            transform_ssh_key,
+            &o,
+        ),
+        SubCommand::Set(o) => run_set(&mut store, o),
     }
 }
