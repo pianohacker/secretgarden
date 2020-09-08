@@ -115,7 +115,7 @@ impl SecretStore {
             tempfile::NamedTempFile::new().expect("Failed to open temporary file for output");
 
         let serialized_secrets = serde_json::to_vec(&SecretFile {
-            secrets: self._secrets.clone().unwrap(),
+            secrets: self._secrets.to_owned().unwrap(),
         })
         .expect("Failed to serialize secrets");
 
@@ -156,13 +156,14 @@ impl SecretStore {
             .expect("Failed to move new secrets to final location");
     }
 
-    fn get_or_generate<OptsT, F>(&mut self, f: F, secret_type: &str, opts: &OptsT) -> String
-    where
-        OptsT: WithCommonOpts + Clone + Serialize,
-        F: Fn(&OptsT) -> String,
-    {
+    fn get_or_generate<OptsT: WithCommonOpts>(
+        &mut self,
+        f: impl Fn(&OptsT) -> String,
+        secret_type: &str,
+        opts: &OptsT,
+    ) -> String {
         let secrets = self._load_secrets();
-        let common_opts = opts.clone().common_opts();
+        let common_opts = opts.common_opts();
         let serialized_opts: serde_json::Value = serde_json::from_str(
             &serde_json::to_string(opts).expect("Failed to serialize options"),
         )
@@ -183,7 +184,7 @@ impl SecretStore {
 
         let value = f(opts);
         secrets.insert(
-            common_opts.name,
+            common_opts.name.to_owned(),
             Secret {
                 _secret_type: secret_type.to_string(),
                 value: value.clone(),
@@ -232,8 +233,8 @@ enum SubCommand {
     Set(SetOpts),
 }
 
-trait WithCommonOpts {
-    fn common_opts(self) -> CommonOpts;
+trait WithCommonOpts: Serialize {
+    fn common_opts(&self) -> &CommonOpts;
 }
 
 #[derive(Clap, Clone, Default, PartialEq)]
@@ -259,35 +260,32 @@ impl Default for GenerateOpt {
     }
 }
 
-fn run_secret_type_with_transform<OptsT, F, TF>(
+fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
     store: &mut SecretStore,
     secret_type: &str,
-    generator: F,
-    transformer: TF,
+    generator: impl Fn(&OptsT) -> String,
+    transformer: impl Fn(String, &OptsT) -> String,
     opts: &OptsT,
-) where
-    OptsT: WithCommonOpts + Clone + Serialize,
-    F: Fn(&OptsT) -> String,
-    TF: Fn(String, &OptsT) -> String,
-{
+) {
     let mut value = store.get_or_generate(generator, secret_type, &opts);
 
-    if opts.clone().common_opts().base64 {
+    if opts.common_opts().base64 {
         value = base64::encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
     println!("{}", transformer(value, opts));
 }
 
-fn run_secret_type<OptsT, F>(store: &mut SecretStore, secret_type: &str, generator: F, opts: &OptsT)
-where
-    OptsT: WithCommonOpts + Clone + Serialize,
-    F: Fn(&OptsT) -> String,
-{
+fn run_secret_type<OptsT: WithCommonOpts>(
+    store: &mut SecretStore,
+    secret_type: &str,
+    generator: impl Fn(&OptsT) -> String,
+    opts: &OptsT,
+) {
     run_secret_type_with_transform(store, secret_type, generator, |x, _| x, opts)
 }
 
-#[derive(Clap, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Clap, Serialize, Deserialize, PartialEq)]
 struct PasswordOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -297,8 +295,8 @@ struct PasswordOpts {
 }
 
 impl WithCommonOpts for PasswordOpts {
-    fn common_opts(self) -> CommonOpts {
-        self.common.clone()
+    fn common_opts(&self) -> &CommonOpts {
+        &self.common
     }
 }
 
@@ -318,7 +316,7 @@ fn generate_password(p: &PasswordOpts) -> String {
     result
 }
 
-#[derive(Clap, Serialize, Deserialize, Clone)]
+#[derive(Clap, Serialize, Deserialize)]
 struct OpaqueOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -326,8 +324,8 @@ struct OpaqueOpts {
 }
 
 impl WithCommonOpts for OpaqueOpts {
-    fn common_opts(self) -> CommonOpts {
-        self.common.clone()
+    fn common_opts(&self) -> &CommonOpts {
+        &self.common
     }
 }
 
@@ -335,7 +333,7 @@ fn generate_opaque(_: &OpaqueOpts) -> String {
     panic!("Cannot generate opaque value");
 }
 
-#[derive(Clap, Serialize, Deserialize, Clone)]
+#[derive(Clap, Serialize, Deserialize)]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -344,7 +342,7 @@ enum SshKeyType {
     Ed25519,
 }
 
-#[derive(Clap, Serialize, Deserialize, Clone)]
+#[derive(Clap, Serialize, Deserialize)]
 struct SshKeyOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -359,8 +357,8 @@ struct SshKeyOpts {
 }
 
 impl WithCommonOpts for SshKeyOpts {
-    fn common_opts(self) -> CommonOpts {
-        self.common.clone()
+    fn common_opts(&self) -> &CommonOpts {
+        &self.common
     }
 }
 
