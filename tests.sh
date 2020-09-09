@@ -82,6 +82,10 @@ function success_text() {
 	_wrap_if_tty $'\e[32m' $'\e[0m' "$@"
 }
 
+function skip_text() {
+	_wrap_if_tty $'\e[33m' $'\e[0m' "$@"
+}
+
 function _assert_failed() {
 	echo "assertion failed: $1"
 
@@ -132,7 +136,8 @@ function assert_sg_fails() {
 }
 
 function assert_sg_fails_matching() {
-	error_text="$(! $SECRETGARDEN $1 2>&1 >/dev/null)" || _assert_failed "secretgarden fails with flags '$1'"
+	error_text="$(! $SECRETGARDEN $1 2>&1)" || _assert_failed "secretgarden fails with flags '$1'"
+	echo $error_text
 
 	assert_match "$error_text" "$2"
 }
@@ -245,9 +250,43 @@ function test_values_not_stored_in_plaintext() {
 	! grep opaqueval secret*
 }
 
+function test_values_cannot_be_decrypted_with_different_ssh_key() {
+	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg_equal "opaque opaque1" "opaqueval"
+
+	unset SSH_AUTH_SOCK
+	eval "$(ssh-agent)" > /dev/null
+	trap "ssh-agent -k > /dev/null" EXIT
+	ssh-keygen -t ed25519 -N '' -f $PWD/id2
+	ssh-add $PWD/id2
+
+	assert_sg_fails_matching "opaque opaque1" "$(ssh-keygen -l -f $TEST_DIR/id | cut -d ' ' -f 2 | sed -e 's,+,\\+,g')"
+}
+
+function test_values_can_be_decrypted_regardless_of_ssh_key_order() {
+	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg_equal "opaque opaque1" "opaqueval"
+
+	unset SSH_AUTH_SOCK
+	eval "$(ssh-agent)" > /dev/null
+	trap "ssh-agent -k > /dev/null" EXIT
+	ssh-keygen -t ed25519 -N '' -f $PWD/id2
+	ssh-add $PWD/id2
+	ssh-add $TEST_DIR/id
+
+	assert_sg "opaque opaque1"
+}
+
+focus_filter=${FOCUS:-'^.*$'}
+
 ## Test running loop
 for test_function in $(awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed -e 's/()//'); do
 	test_name="$(sed -e 's/^test_//;s/_/ /g' <<<"$test_function")"
+
+	if ! [[ "$test_name" =~ $focus_filter ]]; then
+		echo "$(skip_text '[SKIP]') $test_name"
+		continue
+	fi
 
 	if result=$(cd "$(mktemp -d -p $TEST_DIR)"; exec 2>&1; $test_function); then
 		echo "$(success_text '[OK]') $test_name" 

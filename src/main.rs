@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use argon2;
+use base64::{self, display::Base64Display};
 use bincode;
 use byteorder::{BigEndian, ByteOrder};
 use clap::Clap;
+use crypto::{digest::Digest, sha2::Sha256};
 use osshkeys::{cipher, keys};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -33,6 +35,8 @@ struct SecretsEncWrapper {
     signed_input: Vec<u8>,
     argon2_salt: [u8; ARGON2_SALT_LENGTH],
     secretbox_nonce: [u8; secretbox::NONCEBYTES],
+    encrypting_ssh_identity_comment: String,
+    encrypting_ssh_identity_fingerprint: Vec<u8>,
     contents: Vec<u8>,
 }
 
@@ -48,10 +52,16 @@ struct Secret {
     options: serde_json::Value,
 }
 
-#[derive(Default)]
 struct SecretStore {
     _secrets: Option<SecretMap>,
     ssh_auth_sock_path: String,
+    ssh_agent_conn: Option<UnixStream>,
+}
+
+struct HashedSshIdentity {
+    fingerprint: Vec<u8>,
+    comment: String,
+    pubkey_blob: Vec<u8>,
 }
 
 fn ssh_agent_decode(r: &mut impl Read) -> AHResult<ssh_agent_proto::Message> {
@@ -84,10 +94,11 @@ impl SecretStore {
         SecretStore {
             _secrets: None,
             ssh_auth_sock_path,
+            ssh_agent_conn: None,
         }
     }
 
-    fn _argon2_config<'a>() -> argon2::Config<'a> {
+    fn _argon2_config<'b>() -> argon2::Config<'b> {
         let mut argon2_config = argon2::Config::default();
         argon2_config.ad = ARGON2_AD;
         argon2_config.hash_length = ARGON2_HASH_LENGTH;
@@ -96,16 +107,25 @@ impl SecretStore {
         argon2_config
     }
 
-    fn get_agent_signature(&self, data: &[u8]) -> AHResult<Vec<u8>> {
-        let conn = UnixStream::connect(&self.ssh_auth_sock_path).context(format!(
-            "Could not connect to SSH agent at {}",
-            self.ssh_auth_sock_path
-        ))?;
-        // TODO: set to a more reasonable value
-        conn.set_read_timeout(Some(Duration::new(1, 0)))?;
+    fn get_agent_reader_writer(&mut self) -> AHResult<(impl Read, impl Write)> {
+        if self.ssh_agent_conn.is_none() {
+            self.ssh_agent_conn = Some({
+                let conn = UnixStream::connect(&self.ssh_auth_sock_path).context(format!(
+                    "Could not connect to SSH agent at {}",
+                    self.ssh_auth_sock_path
+                ))?;
+                conn.set_read_timeout(Some(Duration::new(1, 0)))?;
+                conn
+            });
+        }
 
-        let mut reader = conn.try_clone()?;
-        let mut writer = conn.try_clone()?;
+        let conn = self.ssh_agent_conn.as_mut().unwrap();
+
+        Ok((conn.try_clone()?, conn.try_clone()?))
+    }
+
+    fn get_agent_identities(&mut self) -> AHResult<Vec<HashedSshIdentity>> {
+        let (mut reader, mut writer) = self.get_agent_reader_writer()?;
 
         ssh_agent_encode(&mut writer, &ssh_agent_proto::Message::RequestIdentities)?;
 
@@ -121,14 +141,33 @@ impl SecretStore {
             }
         };
 
-        if identities.is_empty() {
-            return Err(anyhow!("No keys in SSH agent"));
-        }
+        Ok(identities
+            .iter()
+            .map(|i| {
+                let mut hasher = Sha256::new();
+                hasher.input(&i.pubkey_blob);
+                let mut fingerprint = vec![0; hasher.output_bytes()];
+                hasher.result(&mut fingerprint);
 
+                HashedSshIdentity {
+                    fingerprint,
+                    comment: i.comment.to_owned(),
+                    pubkey_blob: i.pubkey_blob.to_owned(),
+                }
+            })
+            .collect())
+    }
+
+    fn get_agent_signature(
+        &mut self,
+        data: &[u8],
+        identity: &HashedSshIdentity,
+    ) -> AHResult<Vec<u8>> {
+        let (mut reader, mut writer) = self.get_agent_reader_writer()?;
         ssh_agent_encode(
             &mut writer,
             &ssh_agent_proto::Message::SignRequest(ssh_agent_proto::SignRequest {
-                pubkey_blob: identities[0].pubkey_blob.to_vec(),
+                pubkey_blob: identity.pubkey_blob.to_owned(),
                 data: data.to_vec(),
                 flags: 0,
             }),
@@ -149,7 +188,7 @@ impl SecretStore {
         Ok(sign_response)
     }
 
-    fn _decrypt<P: AsRef<Path>>(&self, path: P) -> AHResult<Vec<u8>> {
+    fn _decrypt<P: AsRef<Path>>(&mut self, path: P) -> AHResult<Vec<u8>> {
         let mut file = File::open(path).context("Failed to open secrets file")?;
 
         let mut magic_buf = [0u8; MAGIC.len()];
@@ -162,7 +201,24 @@ impl SecretStore {
         let secrets_wrapper: SecretsEncWrapper =
             bincode::deserialize_from(file).context("Could not read secrets file")?;
 
-        let signed_output = self.get_agent_signature(&secrets_wrapper.signed_input)?;
+        let identities = self.get_agent_identities()?;
+
+        let encrypting_identity = identities
+            .iter()
+            .find(|&identity| {
+                identity.fingerprint == secrets_wrapper.encrypting_ssh_identity_fingerprint
+            })
+            .ok_or(anyhow!(
+                "Cannot find key in agent with fingerprint SHA256:{} ({})",
+                Base64Display::with_config(
+                    &secrets_wrapper.encrypting_ssh_identity_fingerprint,
+                    base64::STANDARD_NO_PAD
+                ),
+                secrets_wrapper.encrypting_ssh_identity_comment,
+            ))?;
+
+        let signed_output =
+            self.get_agent_signature(&secrets_wrapper.signed_input, &encrypting_identity)?;
 
         let argon2_hash = argon2::hash_raw(
             &signed_output,
@@ -223,7 +279,11 @@ impl SecretStore {
         let argon2_salt: [u8; ARGON2_SALT_LENGTH] = rng.gen();
         let secretbox_nonce: [u8; secretbox::NONCEBYTES] = rng.gen();
 
-        let signed_output = self.get_agent_signature(&signed_input)?;
+        let identities = self.get_agent_identities()?;
+        let encrypting_identity = identities
+            .get(0)
+            .ok_or(anyhow!("No keys in SSH agent to encrypt with"))?;
+        let signed_output = self.get_agent_signature(&signed_input, &encrypting_identity)?;
 
         let argon2_hash = argon2::hash_raw(&signed_output, &argon2_salt, &Self::_argon2_config())
             .context("Failed to derive encryption key")?;
@@ -242,6 +302,8 @@ impl SecretStore {
                 signed_input: signed_input.to_vec(),
                 argon2_salt,
                 secretbox_nonce,
+                encrypting_ssh_identity_comment: encrypting_identity.comment.to_owned(),
+                encrypting_ssh_identity_fingerprint: encrypting_identity.fingerprint.to_owned(),
                 contents: encrypted_contents,
             },
         )

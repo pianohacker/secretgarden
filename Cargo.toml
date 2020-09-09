@@ -12,6 +12,7 @@ base64 = "0.12"
 bincode = "1.3"
 byteorder = "1.2"
 clap = "3.0.0-beta.1"
+rust-crypto = "0.2"
 osshkeys = { git = "https://github.com/Leo1003/rust-osshkeys" }
 rand = "0.7"
 rust-argon2 = "0.8"
