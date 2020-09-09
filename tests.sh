@@ -24,7 +24,13 @@ export TEST_FILE="$(realpath ${BASH_SOURCE[0]})"
 export TEST_DIR="$(mktemp -d)"
 
 if [[ -n ${RUST:-} ]]; then
-	cargo build
+	export RUST_BACKTRACE=1
+	export RUST_LIB_BACKTRACE=1
+	if [[ -n ${RUST_NIGHTLY:-} ]]; then
+		rustup run nightly cargo build
+	else
+		cargo build
+	fi
 	cp target/debug/secretgarden ${TEST_DIR}
 	SECRETGARDEN=${TEST_DIR}/secretgarden
 fi
@@ -32,7 +38,7 @@ fi
 cd $TEST_DIR
 trap "rm -rf $TEST_DIR" exit
 
-# Create fake gpg.
+# Create fake gpg, ssh agent
 cat > ./gpg <<'EOF'
 #!/bin/bash
 
@@ -44,6 +50,18 @@ fi
 EOF
 chmod +x ./gpg
 export PATH="$TEST_DIR:$PATH"
+unset SSH_AUTH_SOCK
+eval "$(ssh-agent)" > /dev/null
+trap "ssh-agent -k > /dev/null" EXIT
+ssh-keygen -t ed25519 -N '' -f $TEST_DIR/id > /dev/null
+ssh-add $TEST_DIR/id > /dev/null
+
+if [[ -n ${TRACE_SSH_AGENT_IO:-} ]]; then
+	SSH_AUTH_INNER_SOCK=$SSH_AUTH_SOCK
+	export SSH_AUTH_SOCK=$TEST_DIR/ssh_auth_sock
+	socat -v -x unix-listen:$SSH_AUTH_SOCK,fork unix-client:$SSH_AUTH_INNER_SOCK &
+	trap "kill $!" EXIT
+fi
 
 ## Shared functions
 if [[ -t 1 ]]; then

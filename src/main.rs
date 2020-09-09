@@ -1,16 +1,21 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use argon2;
 use bincode;
+use byteorder::{BigEndian, ByteOrder};
 use clap::Clap;
 use osshkeys::{cipher, keys};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use sodiumoxide::crypto::secretbox;
+use ssh_agent::proto as ssh_agent_proto;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::os::unix::net::UnixStream;
 use std::path::Path;
+use std::time::Duration;
 use tempfile;
 
 type SecretMap = HashMap<String, Secret>;
@@ -46,9 +51,42 @@ struct Secret {
 #[derive(Default)]
 struct SecretStore {
     _secrets: Option<SecretMap>,
+    ssh_auth_sock_path: String,
+}
+
+fn ssh_agent_decode(r: &mut impl Read) -> AHResult<ssh_agent_proto::Message> {
+    let mut msg_len_bytes = [0; 4];
+    r.read_exact(&mut msg_len_bytes)
+        .context("Failed to read from SSH agent")?;
+
+    let msg_len = BigEndian::read_u32(&mut msg_len_bytes) as usize;
+
+    let mut msg_bytes = vec![0; msg_len];
+    r.read_exact(&mut msg_bytes)
+        .context("Failed to read from SSH agent")?;
+
+    ssh_agent_proto::from_bytes(&msg_bytes).context("Failed to deserialize message from SSH agent")
+}
+
+fn ssh_agent_encode(r: &mut impl Write, msg: &ssh_agent_proto::Message) -> AHResult<()> {
+    let msg_bytes =
+        ssh_agent_proto::to_bytes(msg).context("Failed to serialize message to SSH agent")?;
+    let mut msg_len_bytes = [0; 4];
+    BigEndian::write_u32(&mut msg_len_bytes, msg_bytes.len() as u32);
+    r.write_all(&msg_len_bytes)?;
+
+    r.write_all(&msg_bytes)
+        .context("Failed to write to SSH agent")
 }
 
 impl SecretStore {
+    fn new(ssh_auth_sock_path: String) -> SecretStore {
+        SecretStore {
+            _secrets: None,
+            ssh_auth_sock_path,
+        }
+    }
+
     fn _argon2_config<'a>() -> argon2::Config<'a> {
         let mut argon2_config = argon2::Config::default();
         argon2_config.ad = ARGON2_AD;
@@ -58,19 +96,73 @@ impl SecretStore {
         argon2_config
     }
 
-    fn _decrypt<P: AsRef<Path>>(path: P) -> AHResult<Vec<u8>> {
+    fn get_agent_signature(&self, data: &[u8]) -> AHResult<Vec<u8>> {
+        let conn = UnixStream::connect(&self.ssh_auth_sock_path).context(format!(
+            "Could not connect to SSH agent at {}",
+            self.ssh_auth_sock_path
+        ))?;
+        // TODO: set to a more reasonable value
+        conn.set_read_timeout(Some(Duration::new(1, 0)))?;
+
+        let mut reader = conn.try_clone()?;
+        let mut writer = conn.try_clone()?;
+
+        ssh_agent_encode(&mut writer, &ssh_agent_proto::Message::RequestIdentities)?;
+
+        let identities_reply = ssh_agent_decode(&mut reader)?;
+
+        let identities = match identities_reply {
+            ssh_agent_proto::Message::IdentitiesAnswer(i) => i,
+            _ => {
+                return Err(anyhow!(
+                    "Unexpected reply from SSH agent: {:?}",
+                    identities_reply
+                ))
+            }
+        };
+
+        if identities.is_empty() {
+            return Err(anyhow!("No keys in SSH agent"));
+        }
+
+        ssh_agent_encode(
+            &mut writer,
+            &ssh_agent_proto::Message::SignRequest(ssh_agent_proto::SignRequest {
+                pubkey_blob: identities[0].pubkey_blob.to_vec(),
+                data: data.to_vec(),
+                flags: 0,
+            }),
+        )?;
+
+        let sign_request_reply = ssh_agent_decode(&mut reader)?;
+
+        let sign_response = match sign_request_reply {
+            ssh_agent_proto::Message::SignResponse(s) => s,
+            _ => {
+                return Err(anyhow!(
+                    "Unexpected reply from SSH agent: {:?}",
+                    sign_request_reply
+                ))
+            }
+        };
+
+        Ok(sign_response)
+    }
+
+    fn _decrypt<P: AsRef<Path>>(&self, path: P) -> AHResult<Vec<u8>> {
         let mut file = File::open(path).context("Failed to open secrets file")?;
 
         let mut magic_buf = [0u8; MAGIC.len()];
         if file.read(&mut magic_buf).is_err() || magic_buf != MAGIC {
-            panic!("Invalid magic value in header")
+            return Err(anyhow!(
+                "Invalid magic value in header; secrets file invalid or corrupted"
+            ));
         }
 
         let secrets_wrapper: SecretsEncWrapper =
             bincode::deserialize_from(file).context("Could not read secrets file")?;
 
-        // TODO: replace with signature via SSH key
-        let signed_output = secrets_wrapper.signed_input;
+        let signed_output = self.get_agent_signature(&secrets_wrapper.signed_input)?;
 
         let argon2_hash = argon2::hash_raw(
             &signed_output,
@@ -99,7 +191,7 @@ impl SecretStore {
         let secrets_location = Path::new(DEFAULT_FILENAME);
 
         if secrets_location.is_file() {
-            let existing_contents = Self::_decrypt(secrets_location)?;
+            let existing_contents = self._decrypt(secrets_location)?;
 
             let existing_secrets: SecretFile = serde_json::from_slice(&existing_contents)
                 .context("Could not parse secrets JSON")?;
@@ -131,7 +223,7 @@ impl SecretStore {
         let argon2_salt: [u8; ARGON2_SALT_LENGTH] = rng.gen();
         let secretbox_nonce: [u8; secretbox::NONCEBYTES] = rng.gen();
 
-        let signed_output = signed_input;
+        let signed_output = self.get_agent_signature(&signed_input)?;
 
         let argon2_hash = argon2::hash_raw(&signed_output, &argon2_salt, &Self::_argon2_config())
             .context("Failed to derive encryption key")?;
@@ -163,11 +255,11 @@ impl SecretStore {
 
     fn get_or_generate<OptsT: WithCommonOpts>(
         &mut self,
-        f: impl Fn(&OptsT) -> String,
+        f: impl Fn(&OptsT) -> AHResult<String>,
         secret_type: &str,
         opts: &OptsT,
     ) -> AHResult<String> {
-        let secrets = self._load_secrets().unwrap();
+        let secrets = self._load_secrets()?;
         let common_opts = opts.common_opts();
         let serialized_opts: serde_json::Value = serde_json::from_str(
             &serde_json::to_string(opts).context("Failed to serialize options")?,
@@ -187,12 +279,12 @@ impl SecretStore {
             ));
         }
 
-        let value = f(opts);
+        let value = f(opts)?;
         secrets.insert(
             common_opts.name.to_owned(),
             Secret {
                 _secret_type: secret_type.to_string(),
-                value: value.clone(),
+                value: value.to_owned(),
                 options: serialized_opts.clone(),
             },
         );
@@ -202,7 +294,7 @@ impl SecretStore {
     }
 
     fn set(&mut self, secret_type: String, key: String, value: String) -> AHResult<()> {
-        let secrets = self._load_secrets().unwrap();
+        let secrets = self._load_secrets()?;
 
         secrets.insert(
             key,
@@ -270,8 +362,8 @@ impl Default for GenerateOpt {
 fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
     store: &mut SecretStore,
     secret_type: &str,
-    generator: impl Fn(&OptsT) -> String,
-    transformer: impl Fn(String, &OptsT) -> String,
+    generator: impl Fn(&OptsT) -> AHResult<String>,
+    transformer: impl Fn(String, &OptsT) -> AHResult<String>,
     opts: &OptsT,
 ) -> AHResult<()> {
     let mut value = store.get_or_generate(generator, secret_type, &opts)?;
@@ -280,7 +372,7 @@ fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
         value = base64::encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
-    println!("{}", transformer(value, opts));
+    println!("{}", transformer(value, opts)?);
 
     Ok(())
 }
@@ -288,10 +380,10 @@ fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
 fn run_secret_type<OptsT: WithCommonOpts>(
     store: &mut SecretStore,
     secret_type: &str,
-    generator: impl Fn(&OptsT) -> String,
+    generator: impl Fn(&OptsT) -> AHResult<String>,
     opts: &OptsT,
 ) -> AHResult<()> {
-    run_secret_type_with_transform(store, secret_type, generator, |x, _| x, opts)
+    run_secret_type_with_transform(store, secret_type, generator, |x, _| Ok(x), opts)
 }
 
 #[derive(Clap, Serialize, Deserialize, PartialEq)]
@@ -312,7 +404,7 @@ impl WithCommonOpts for PasswordOpts {
 const PASSWORD_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const PASSWORD_FIRST_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-fn generate_password(p: &PasswordOpts) -> String {
+fn generate_password(p: &PasswordOpts) -> AHResult<String> {
     let mut result: String = String::new();
     let mut rng = rand::thread_rng();
 
@@ -322,7 +414,7 @@ fn generate_password(p: &PasswordOpts) -> String {
         result.push(PASSWORD_CHARS[rng.gen_range(0, PASSWORD_CHARS.len())] as char);
     }
 
-    result
+    Ok(result)
 }
 
 #[derive(Clap, Serialize, Deserialize)]
@@ -338,8 +430,8 @@ impl WithCommonOpts for OpaqueOpts {
     }
 }
 
-fn generate_opaque(_: &OpaqueOpts) -> String {
-    panic!("Cannot generate opaque value");
+fn generate_opaque(_: &OpaqueOpts) -> AHResult<String> {
+    Err(anyhow!("Cannot generate opaque value"))
 }
 
 #[derive(Clap, Serialize, Deserialize, PartialEq)]
@@ -371,20 +463,20 @@ impl WithCommonOpts for SshKeyOpts {
     }
 }
 
-fn transform_ssh_key(private_key: String, opts: &SshKeyOpts) -> String {
+fn transform_ssh_key(private_key: String, opts: &SshKeyOpts) -> AHResult<String> {
     if !opts.public {
-        return private_key;
+        return Ok(private_key);
     }
 
-    let key_pair =
-        keys::KeyPair::from_keystr(&private_key, None).expect("Failed to decode SSH private key");
+    let key_pair = keys::KeyPair::from_keystr(&private_key, None)
+        .context("Failed to decode SSH private key")?;
 
     key_pair
         .serialize_publickey()
-        .expect("Failed to encode SSH public key")
+        .context("Failed to encode SSH public key")
 }
 
-fn generate_ssh_key(o: &SshKeyOpts) -> String {
+fn generate_ssh_key(o: &SshKeyOpts) -> AHResult<String> {
     let key_type = match &o.type_ {
         SshKeyType::Rsa => keys::KeyType::RSA,
         SshKeyType::Dsa => keys::KeyType::DSA,
@@ -393,19 +485,19 @@ fn generate_ssh_key(o: &SshKeyOpts) -> String {
     };
 
     if o.type_ == SshKeyType::Dsa && o.bits.unwrap_or(1024) != 1024 {
-        panic!("DSA SSH keys can only have 1024 bits")
+        return Err(anyhow!("DSA SSH keys can only have 1024 bits"));
     }
 
     if o.type_ == SshKeyType::Ed25519 && o.bits.is_some() {
-        panic!("Bits cannot be specified for ED25519 SSH keys")
+        return Err(anyhow!("Bits cannot be specified for ED25519 SSH keys"));
     }
 
-    let key_pair =
-        keys::KeyPair::generate(key_type, o.bits.unwrap_or(0)).expect("Failed to generate SSH key");
+    let key_pair = keys::KeyPair::generate(key_type, o.bits.unwrap_or(0))
+        .context("Failed to generate SSH key")?;
 
     key_pair
         .serialize_openssh(None, cipher::Cipher::Null)
-        .expect("Failed to encode SSH key")
+        .context("Failed to encode SSH key")
 }
 
 #[derive(Clap)]
@@ -451,7 +543,11 @@ fn main() -> AHResult<()> {
     sodiumoxide::init().map_err(|_| anyhow!("Failed to initialize sodiumoxide"))?;
 
     let opt = Opts::parse();
-    let mut store = SecretStore::default();
+
+    let ssh_auth_sock_path = env::var("SSH_AUTH_SOCK")
+        .map_err(|_| anyhow!("SSH_AUTH_SOCK not set; ssh-agent not running?"))?;
+
+    let mut store = SecretStore::new(ssh_auth_sock_path);
 
     match opt.subcmd {
         SubCommand::Password(o) => run_secret_type(&mut store, "password", generate_password, &o),
