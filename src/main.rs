@@ -1,3 +1,11 @@
+// Copyright (c) 2020 Jesse Weaver.
+//
+// This file is part of secretgarden.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 use anyhow::{anyhow, Context, Result as AHResult};
 use argon2;
 use base64::{self, display::Base64Display};
