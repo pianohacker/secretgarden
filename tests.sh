@@ -144,32 +144,32 @@ function assert_sg_fails_matching() {
 
 ## Tests
 function test_setting_opaque() {
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
 }
 
 function test_setting_multiple_opaques_does_not_collide() {
-	assert_sg "set opaque opaque1 opaqueval1"
-	assert_sg "set opaque opaque2 opaqueval2"
+	assert_sg "set-opaque opaque1 opaqueval1"
+	assert_sg "set-opaque opaque2 opaqueval2"
 	assert_sg_equal "opaque opaque1" "opaqueval1"
 	assert_sg_equal "opaque opaque2" "opaqueval2"
 }
 
 function test_setting_opaque_from_base64() {
-	assert_sg "set opaque opaque1 --base64 YmFzZTY0dGVzdA=="
+	assert_sg "set-opaque opaque1 --base64 YmFzZTY0dGVzdA=="
 	assert_sg_equal "opaque opaque1" "base64test"
-	echo 'YmFzZTY0c3RkaW4=' |  assert_sg "set opaque opaque2 --base64"
+	echo 'YmFzZTY0c3RkaW4=' |  assert_sg "set-opaque opaque2 --base64"
 	assert_sg_equal "opaque opaque2" "base64stdin"
 }
 
 function test_setting_opaque_from_base64_fails_with_concise_error() {
-	assert_sg_fails_matching "set opaque opaque1 --base64 A" '^Error: .* base64'
+	assert_sg_fails_matching "set-opaque opaque1 --base64 A" '^Error: .* base64'
 }
 
 function test_getting_opaque_as_base64() {
-	assert_sg "set opaque opaque1 base64test"
+	assert_sg "set-opaque opaque1 base64test"
 	assert_sg_equal "opaque opaque1 --base64" "YmFzZTY0dGVzdA=="
-	echo 'base64stdin' | assert_sg "set opaque opaque2"
+	echo 'base64stdin' | assert_sg "set-opaque opaque2"
 	assert_sg_equal "opaque opaque2 --base64" "YmFzZTY0c3RkaW4="
 }
 
@@ -245,24 +245,24 @@ function test_ssh_key_types_with_fixed_lengths_reject_custom_bits() {
 }
 
 function test_values_not_stored_in_plaintext() {
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 
 	! grep opaqueval secret*
 }
 
 function test_encrypted_container_different_each_time() {
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 	first_sha256sum="$(sha256sum secretgarden.dat | cut -d ' ' -f 1)"
 	rm secretgarden.dat
 
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 	second_sha256sum="$(sha256sum secretgarden.dat | cut -d ' ' -f 1)"
 
 	assert_not_equal "$first_sha256sum" "$second_sha256sum"
 }
 
 function test_values_cannot_be_decrypted_with_different_ssh_key() {
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
 
 	unset SSH_AUTH_SOCK
@@ -275,7 +275,7 @@ function test_values_cannot_be_decrypted_with_different_ssh_key() {
 }
 
 function test_values_can_be_decrypted_regardless_of_ssh_key_order() {
-	assert_sg "set opaque opaque1 opaqueval"
+	assert_sg "set-opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
 
 	unset SSH_AUTH_SOCK
@@ -296,7 +296,7 @@ function test_values_can_be_decrypted_with_each_ssh_key_type() {
 		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
 		ssh-add $PWD/id-$key_type
 
-		assert_sg "set opaque opaque1 opaqueval"
+		assert_sg "set-opaque opaque1 opaqueval"
 		assert_sg_equal "opaque opaque1" "opaqueval"
 
 		rm secretgarden.dat
@@ -312,7 +312,7 @@ function test_encryption_fails_if_only_ssh_key_types_with_randomized_signatures_
 		ssh-add $PWD/id-$key_type
 
 		rm -f secretgarden.dat
-		assert_sg_fails "set opaque opaque1 opaqueval"
+		assert_sg_fails "set-opaque opaque1 opaqueval"
 	done
 }
 
@@ -325,7 +325,7 @@ function test_encryption_selects_ssh_key_types_with_deterministic_signatures() {
 		ssh-add $PWD/id-$key_type
 		ssh-add $TEST_DIR/id
 
-		assert_sg "set opaque opaque1 opaqueval"
+		assert_sg "set-opaque opaque1 opaqueval"
 		assert_sg "opaque opaque1"
 
 		ssh-add -d $TEST_DIR/id.pub

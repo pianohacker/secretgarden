@@ -419,13 +419,13 @@ impl SecretStore {
         Ok(value)
     }
 
-    fn set(&mut self, secret_type: String, key: String, value: String) -> AHResult<()> {
+    fn set_opaque(&mut self, key: String, value: String) -> AHResult<()> {
         let secrets = self._load_secrets()?;
 
         secrets.insert(
             key,
             Secret {
-                _secret_type: secret_type,
+                _secret_type: "opaque".to_string(),
                 value: value.clone(),
                 options: serde_json::Value::Object(serde_json::Map::new()),
             },
@@ -454,8 +454,8 @@ enum SubCommand {
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key")]
     SshKey(SshKeyOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set a value")]
-    Set(SetOpts),
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value")]
+    SetOpaque(SetOpaqueOpts),
 }
 
 trait WithCommonOpts: Serialize {
@@ -627,9 +627,7 @@ fn generate_ssh_key(o: &SshKeyOpts) -> AHResult<String> {
 }
 
 #[derive(Clap)]
-struct SetOpts {
-    #[clap(name = "type")]
-    type_: String,
+struct SetOpaqueOpts {
     #[clap()]
     name: String,
     #[clap()]
@@ -638,7 +636,7 @@ struct SetOpts {
     base64: bool,
 }
 
-fn run_set(store: &mut SecretStore, s: SetOpts) -> AHResult<()> {
+fn run_set_opaque(store: &mut SecretStore, s: SetOpaqueOpts) -> AHResult<()> {
     let mut value: String;
 
     match s.value {
@@ -662,7 +660,7 @@ fn run_set(store: &mut SecretStore, s: SetOpts) -> AHResult<()> {
             .collect();
     }
 
-    store.set(s.type_, s.name, value)
+    store.set_opaque(s.name, value)
 }
 
 fn main() -> AHResult<()> {
@@ -685,6 +683,6 @@ fn main() -> AHResult<()> {
             transform_ssh_key,
             &o,
         ),
-        SubCommand::Set(o) => run_set(&mut store, o),
+        SubCommand::SetOpaque(o) => run_set_opaque(&mut store, o),
     }
 }

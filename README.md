@@ -74,11 +74,11 @@ ssh-ed25519 ...
 Some secrets might be dictated to you (API tokens, etc.), but it can still be useful to store them
 alongside generated secrets.
 
-Opaque (non-generated) values can be set with `secretgarden set` and retrieved with `secretgarden
+Opaque (non-generated) values can be set with `secretgarden set-opaque` and retrieved with `secretgarden
 opaque`:
 
 ```shell
-$ secretgarden set opaque api-token
+$ secretgarden set-opaque api-token
 <enter secret value>
 $ secretgarden opaque api-token
 <your secret value>
