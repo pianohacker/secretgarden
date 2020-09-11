@@ -35,6 +35,9 @@ $ ssh-add -l
 
 If `$ ssh-add -l` returns nothing, then add your SSH key with `$ ssh-add`.
 
+**Note**: only RSA and ED25519 keys are accepted. DSA and ECDSA keys generate random signatures,
+making them unusable for key derivation.
+
 If it returns an error, you likely aren't running `ssh-agent`. You can start it for your current
 shell with `$ eval $(ssh-agent)`, but should probably add that command to your login script. 
 

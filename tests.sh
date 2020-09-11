@@ -29,7 +29,7 @@ if [[ -n ${RUST:-} ]]; then
 	if [[ -n ${RUST_NIGHTLY:-} ]]; then
 		rustup run nightly cargo build
 	else
-		cargo build
+		cargo build --features crypto-trace
 	fi
 	cp target/debug/secretgarden ${TEST_DIR}
 	SECRETGARDEN=${TEST_DIR}/secretgarden
@@ -250,6 +250,17 @@ function test_values_not_stored_in_plaintext() {
 	! grep opaqueval secret*
 }
 
+function test_encrypted_container_different_each_time() {
+	assert_sg "set opaque opaque1 opaqueval"
+	first_sha256sum="$(sha256sum secretgarden.dat | cut -d ' ' -f 1)"
+	rm secretgarden.dat
+
+	assert_sg "set opaque opaque1 opaqueval"
+	second_sha256sum="$(sha256sum secretgarden.dat | cut -d ' ' -f 1)"
+
+	assert_not_equal "$first_sha256sum" "$second_sha256sum"
+}
+
 function test_values_cannot_be_decrypted_with_different_ssh_key() {
 	assert_sg "set opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
@@ -276,6 +287,61 @@ function test_values_can_be_decrypted_regardless_of_ssh_key_order() {
 
 	assert_sg "opaque opaque1"
 }
+
+function test_values_can_be_decrypted_with_each_ssh_key_type() {
+	unset SSH_AUTH_SOCK
+	for key_type in rsa ed25519; do
+		eval "$(ssh-agent)" > /dev/null
+		trap "ssh-agent -k > /dev/null" EXIT
+		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
+		ssh-add $PWD/id-$key_type
+
+		assert_sg "set opaque opaque1 opaqueval"
+		assert_sg_equal "opaque opaque1" "opaqueval"
+
+		rm secretgarden.dat
+	done
+}
+
+function test_encryption_fails_if_only_ssh_key_types_with_randomized_signatures_are_available() {
+	unset SSH_AUTH_SOCK
+	for key_type in dsa ecdsa; do
+		eval "$(ssh-agent)" > /dev/null
+		trap "ssh-agent -k > /dev/null" EXIT
+		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
+		ssh-add $PWD/id-$key_type
+
+		rm -f secretgarden.dat
+		assert_sg_fails "set opaque opaque1 opaqueval"
+	done
+}
+
+function test_encryption_selects_ssh_key_types_with_deterministic_signatures() {
+	unset SSH_AUTH_SOCK
+	for key_type in dsa ecdsa; do
+		eval "$(ssh-agent)" > /dev/null
+		trap "ssh-agent -k > /dev/null" EXIT
+		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
+		ssh-add $PWD/id-$key_type
+		ssh-add $TEST_DIR/id
+
+		assert_sg "set opaque opaque1 opaqueval"
+		assert_sg "opaque opaque1"
+
+		ssh-add -d $TEST_DIR/id.pub
+		assert_sg_fails_matching "opaque opaque1" "fingerprint"
+	done
+}
+
+## Test running loop
+function get_test_functions() {
+	awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed -e 's/()//'
+}
+
+# If any test functions are named FOCUS, default to focusing those.
+if get_test_functions | grep FOCUS; then
+	: ${FOCUS:=FOCUS}
+fi
 
 focus_filter=${FOCUS:-'^.*$'}
 

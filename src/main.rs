@@ -77,7 +77,7 @@ fn ssh_agent_decode(r: &mut impl Read) -> AHResult<ssh_agent_proto::Message> {
     r.read_exact(&mut msg_len_bytes)
         .context("Failed to read from SSH agent")?;
 
-    let msg_len = BigEndian::read_u32(&mut msg_len_bytes) as usize;
+    let msg_len = BigEndian::read_u32(&msg_len_bytes) as usize;
 
     let mut msg_bytes = vec![0; msg_len];
     r.read_exact(&mut msg_bytes)
@@ -151,6 +151,12 @@ impl SecretStore {
 
         Ok(identities
             .iter()
+            .filter(|i| {
+                let key_type_len = BigEndian::read_u32(&i.pubkey_blob) as usize;
+                let key_type = &i.pubkey_blob[4..(key_type_len + 4)];
+
+                key_type == b"ssh-rsa" || key_type == b"ssh-ed25519"
+            })
             .map(|i| {
                 let mut hasher = Sha256::new();
                 hasher.input(&i.pubkey_blob);
@@ -235,6 +241,31 @@ impl SecretStore {
         )
         .context("Failed to derive encryption key")?;
 
+        if cfg!(feature = "crypto-trace") {
+            eprintln!("Decryption parameters: ");
+            eprintln!(
+                "  Signed input: {}",
+                Base64Display::with_config(&secrets_wrapper.signed_input, base64::STANDARD)
+            );
+            eprintln!(
+                "  Signed output: {}",
+                Base64Display::with_config(&signed_output, base64::STANDARD)
+            );
+            eprintln!(
+                "  Argon2 salt: {}",
+                Base64Display::with_config(&secrets_wrapper.argon2_salt, base64::STANDARD)
+            );
+            eprintln!(
+                "  Argon2 hash: {}",
+                Base64Display::with_config(&argon2_hash, base64::STANDARD)
+            );
+            eprintln!(
+                "  Secretbox nonce: {}",
+                Base64Display::with_config(&secrets_wrapper.secretbox_nonce, base64::STANDARD)
+            );
+            eprintln!();
+        }
+
         // We have to use map_err/anyhow! because secretbox::open returns a Result<..., ()>, which
         // does not have a context() implementation.
         secretbox::open(
@@ -288,13 +319,38 @@ impl SecretStore {
         let secretbox_nonce: [u8; secretbox::NONCEBYTES] = rng.gen();
 
         let identities = self.get_agent_identities()?;
-        let encrypting_identity = identities
-            .get(0)
-            .ok_or(anyhow!("No keys in SSH agent to encrypt with"))?;
+        let encrypting_identity = identities.get(0).ok_or(anyhow!(
+            "No valid keys in SSH agent to encrypt with (only RSA or ED25519 keys are accepted)"
+        ))?;
         let signed_output = self.get_agent_signature(&signed_input, &encrypting_identity)?;
 
         let argon2_hash = argon2::hash_raw(&signed_output, &argon2_salt, &Self::_argon2_config())
             .context("Failed to derive encryption key")?;
+
+        if cfg!(feature = "crypto-trace") {
+            eprintln!("Encryption parameters: ");
+            eprintln!(
+                "  Signed input: {}",
+                Base64Display::with_config(&signed_input, base64::STANDARD)
+            );
+            eprintln!(
+                "  Signed output: {}",
+                Base64Display::with_config(&signed_output, base64::STANDARD)
+            );
+            eprintln!(
+                "  Argon2 salt: {}",
+                Base64Display::with_config(&argon2_salt, base64::STANDARD)
+            );
+            eprintln!(
+                "  Argon2 hash: {}",
+                Base64Display::with_config(&argon2_hash, base64::STANDARD)
+            );
+            eprintln!(
+                "  Secretbox nonce: {}",
+                Base64Display::with_config(&secretbox_nonce, base64::STANDARD)
+            );
+            eprintln!();
+        }
 
         let encrypted_contents = secretbox::seal(
             &serialized_secrets,
