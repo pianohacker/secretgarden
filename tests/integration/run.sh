@@ -16,6 +16,10 @@ set -eu
 # and propagate up errors in pipes and command substitutions.
 set -o pipefail
 
+script_dir="$(cd $(dirname $BASH_SOURCE[0]); echo $PWD)"
+
+source $script_dir/functions.sh
+
 # Save off the location of secretgarden.
 SECRETGARDEN="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD/secretgarden)"
 
@@ -23,17 +27,14 @@ SECRETGARDEN="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD/secretgarden)"
 export TEST_FILE="$(realpath ${BASH_SOURCE[0]})"
 export TEST_DIR="$(mktemp -d)"
 
-if [[ -n ${RUST:-} ]]; then
-	export RUST_BACKTRACE=1
-	export RUST_LIB_BACKTRACE=1
-	if [[ -n ${RUST_NIGHTLY:-} ]]; then
-		rustup run nightly cargo build
-	else
-		cargo build --features crypto-trace
-	fi
-	cp target/debug/secretgarden ${TEST_DIR}
-	SECRETGARDEN=${TEST_DIR}/secretgarden
+export RUST_BACKTRACE=1
+export RUST_LIB_BACKTRACE=1
+if [[ -n ${RUST_NIGHTLY:-} ]]; then
+	rustup run nightly cargo build ${CARGO_FLAGS:---release}
+else
+	cargo build ${CARGO_FLAGS:---release}
 fi
+SECRETGARDEN=$PWD/target/release/secretgarden
 
 cd $TEST_DIR
 trap "rm -rf $TEST_DIR" exit
@@ -50,18 +51,6 @@ fi
 EOF
 chmod +x ./gpg
 export PATH="$TEST_DIR:$PATH"
-unset SSH_AUTH_SOCK
-eval "$(ssh-agent)" > /dev/null
-trap "ssh-agent -k > /dev/null" EXIT
-ssh-keygen -t ed25519 -N '' -f $TEST_DIR/id > /dev/null
-ssh-add $TEST_DIR/id > /dev/null
-
-if [[ -n ${TRACE_SSH_AGENT_IO:-} ]]; then
-	SSH_AUTH_INNER_SOCK=$SSH_AUTH_SOCK
-	export SSH_AUTH_SOCK=$TEST_DIR/ssh_auth_sock
-	socat -v -x unix-listen:$SSH_AUTH_SOCK,fork unix-client:$SSH_AUTH_INNER_SOCK &
-	trap "kill $!" EXIT
-fi
 
 ## Shared functions
 if [[ -t 1 ]]; then
@@ -265,34 +254,28 @@ function test_values_cannot_be_decrypted_with_different_ssh_key() {
 	assert_sg "set-opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
 
-	unset SSH_AUTH_SOCK
-	eval "$(ssh-agent)" > /dev/null
-	trap "ssh-agent -k > /dev/null" EXIT
+	spawn_ssh_agent
 	ssh-keygen -t ed25519 -N '' -f $PWD/id2
 	ssh-add $PWD/id2
 
-	assert_sg_fails_matching "opaque opaque1" "$(ssh-keygen -l -f $TEST_DIR/id | cut -d ' ' -f 2 | sed -e 's,+,\\+,g')"
+	assert_sg_fails_matching "opaque opaque1" "$(ssh-keygen -l -f $PWD/orig-id | cut -d ' ' -f 2 | sed -e 's,+,\\+,g')"
 }
 
 function test_values_can_be_decrypted_regardless_of_ssh_key_order() {
 	assert_sg "set-opaque opaque1 opaqueval"
 	assert_sg_equal "opaque opaque1" "opaqueval"
 
-	unset SSH_AUTH_SOCK
-	eval "$(ssh-agent)" > /dev/null
-	trap "ssh-agent -k > /dev/null" EXIT
+	spawn_ssh_agent
 	ssh-keygen -t ed25519 -N '' -f $PWD/id2
 	ssh-add $PWD/id2
-	ssh-add $TEST_DIR/id
+	ssh-add $PWD/orig-id
 
 	assert_sg "opaque opaque1"
 }
 
 function test_values_can_be_decrypted_with_each_ssh_key_type() {
-	unset SSH_AUTH_SOCK
 	for key_type in rsa ed25519; do
-		eval "$(ssh-agent)" > /dev/null
-		trap "ssh-agent -k > /dev/null" EXIT
+		spawn_ssh_agent
 		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
 		ssh-add $PWD/id-$key_type
 
@@ -304,10 +287,8 @@ function test_values_can_be_decrypted_with_each_ssh_key_type() {
 }
 
 function test_encryption_fails_if_only_ssh_key_types_with_randomized_signatures_are_available() {
-	unset SSH_AUTH_SOCK
 	for key_type in dsa ecdsa; do
-		eval "$(ssh-agent)" > /dev/null
-		trap "ssh-agent -k > /dev/null" EXIT
+		spawn_ssh_agent
 		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
 		ssh-add $PWD/id-$key_type
 
@@ -317,19 +298,35 @@ function test_encryption_fails_if_only_ssh_key_types_with_randomized_signatures_
 }
 
 function test_encryption_selects_ssh_key_types_with_deterministic_signatures() {
-	unset SSH_AUTH_SOCK
 	for key_type in dsa ecdsa; do
-		eval "$(ssh-agent)" > /dev/null
-		trap "ssh-agent -k > /dev/null" EXIT
+		spawn_ssh_agent
 		ssh-keygen -t $key_type -N '' -f $PWD/id-$key_type
 		ssh-add $PWD/id-$key_type
-		ssh-add $TEST_DIR/id
+		ssh-add $PWD/orig-id
 
 		assert_sg "set-opaque opaque1 opaqueval"
 		assert_sg "opaque opaque1"
 
-		ssh-add -d $TEST_DIR/id.pub
+		ssh-add -d $PWD/orig-id.pub
 		assert_sg_fails_matching "opaque opaque1" "fingerprint"
+	done
+}
+
+function test_output_compatible_with_previous_versions() {
+	set -x 
+	IFS=$'\n'
+
+	for version in $(cd $script_dir/assets/versions/; ls); do
+		pushd $script_dir/assets/versions/$version
+
+		ssh-add -D
+		ssh-add id
+
+		for output in $(cd outputs; ls); do
+			diff -u outputs/"$output" <(eval "$SECRETGARDEN $output") || exit 1
+		done
+
+		popd
 	done
 }
 
@@ -354,7 +351,19 @@ for test_function in $(awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed
 		continue
 	fi
 
-	if result=$(cd "$(mktemp -d -p $TEST_DIR)"; exec 2>&1; $test_function); then
+	if result=$(
+		cd "$(mktemp -d -p $TEST_DIR)"
+
+		spawn_ssh_agent
+		trap _kill_ssh_agents EXIT
+		ssh-keygen -t ed25519 -N '' -f $PWD/orig-id > /dev/null
+		ssh-add -q $PWD/orig-id > /dev/null
+
+		exec 2>&1
+		$test_function
+
+		_kill_ssh_agents
+	); then
 		echo "$(success_text '[OK]') $test_name" 
 
 		if [[ ${TEST_VERBOSITY:-} -ge 1 ]]; then
