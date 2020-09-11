@@ -700,7 +700,7 @@ checksum = "2ac6fe3538f701e339953a3ebbe4f39941aababa8a3f6964635b24ab526daeac"
 [[package]]
 name = "osshkeys"
 version = "0.4.0"
-source = "git+https://github.com/Leo1003/rust-osshkeys#40972edd00adb239d5558e4903f9b596457add09"
+source = "git+https://github.com/Leo1003/rust-osshkeys#f51b9a9506d35d725ab9ed6308b0ebc7779db954"
 dependencies = [
  "backtrace",
  "base64",
