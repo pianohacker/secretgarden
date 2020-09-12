@@ -25,7 +25,7 @@ SECRETGARDEN="$(cd $(dirname ${BASH_SOURCE[0]}); echo $PWD/secretgarden)"
 
 # Create a temporary directory to run tests in that we'll delete later.
 export TEST_FILE="$(realpath ${BASH_SOURCE[0]})"
-export TEST_DIR="$(mktemp -d)"
+export TEST_DIR="$(mktemp -d -t secretgarden-tests.XXXXXXXX)"
 
 export RUST_BACKTRACE=1
 export RUST_LIB_BACKTRACE=1
@@ -37,7 +37,7 @@ fi
 SECRETGARDEN=$PWD/target/release/secretgarden
 
 cd $TEST_DIR
-trap "rm -rf $TEST_DIR" exit
+trap "rm -rf $TEST_DIR" EXIT
 
 # Create fake gpg, ssh agent
 cat > ./gpg <<'EOF'
@@ -316,8 +316,9 @@ function test_output_compatible_with_previous_versions() {
 	set -x 
 	IFS=$'\n'
 
-	for version in $(cd $script_dir/assets/versions/; ls); do
-		pushd $script_dir/assets/versions/$version
+	for version_archive in $script_dir/assets/versions/*.tar.xz; do
+		tar xf $version_archive
+		pushd $(basename ${version_archive%%.tar.*})
 
 		ssh-add -D
 		ssh-add id
@@ -352,7 +353,7 @@ for test_function in $(awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed
 	fi
 
 	if result=$(
-		cd "$(mktemp -d -p $TEST_DIR)"
+		cd "$(TMPDIR=$TEST_DIR mktemp -d -t $test_function.XXXXXXXX)"
 
 		spawn_ssh_agent
 		trap _kill_ssh_agents EXIT

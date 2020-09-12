@@ -21,11 +21,11 @@ if [[ -z $secretgarden_version ]]; then
 	exit 1
 fi
 
-version_assets_directory="$script_dir/assets/versions/$secretgarden_version"
+version_assets_directory="$script_dir/assets/versions"
 
-rm -rf $version_assets_directory
-mkdir -p $version_assets_directory/outputs
-cd $version_assets_directory
+cd "$(mktemp -d)"
+mkdir -p $secretgarden_version/outputs
+pushd $secretgarden_version
 
 spawn_ssh_agent
 trap _kill_ssh_agents EXIT
@@ -61,3 +61,8 @@ $SECRETGARDEN set-opaque opaque-base64 --base64 c2ltcGxlLW9wYXF1ZTY0
 store_output opaque opaque-base64
 echo c2ltcGxlLW9wYXF1ZTY0 | $SECRETGARDEN set-opaque opaque-base64-stdin --base64
 store_output opaque opaque-base64-stdin
+
+popd
+
+tar cJvf ${secretgarden_version}.tar.xz $secretgarden_version
+mv ${secretgarden_version}.tar.xz $version_assets_directory/
