@@ -699,8 +699,9 @@ checksum = "2ac6fe3538f701e339953a3ebbe4f39941aababa8a3f6964635b24ab526daeac"
 
 [[package]]
 name = "osshkeys"
-version = "0.4.0"
-source = "git+https://github.com/Leo1003/rust-osshkeys#f51b9a9506d35d725ab9ed6308b0ebc7779db954"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa3cff3850d67afada21eac8bb5e75cee3f1dff50e05d8abcbf1fc93eb63a607"
 dependencies = [
  "backtrace",
  "base64",
@@ -973,7 +974,7 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "secretgarden"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64",
