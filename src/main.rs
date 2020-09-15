@@ -181,6 +181,9 @@ enum SubCommand {
 
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value")]
     SetOpaque(SetOpaqueOpts),
+
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to our home directory")]
+    InstallAnsiblePlugin,
 }
 
 trait WithCommonOpts: Serialize {
@@ -388,6 +391,32 @@ fn run_set_opaque(store: &mut impl SecretStore, s: SetOpaqueOpts) -> AHResult<()
     store.set_opaque(s.name, value)
 }
 
+fn run_install_ansible_plugin() -> AHResult<()> {
+    let home_dir_path = dirs::home_dir().ok_or(anyhow!(
+        "Could not determine your home directory; is $HOME set?"
+    ))?;
+
+    let ansible_lookup_plugin_directory = format!(
+        "{}/.ansible/plugins/lookup",
+        home_dir_path.to_str().unwrap(),
+    );
+
+    let ansible_lookup_plugin_path =
+        format!("{}/secretgarden.py", ansible_lookup_plugin_directory,);
+
+    fs::create_dir_all(ansible_lookup_plugin_directory)
+        .context("Failed to create directory {} for Ansible lookup plugin")?;
+
+    fs::write(
+        &ansible_lookup_plugin_path,
+        include_bytes!("ansible_lookup_plugin.py").to_vec(),
+    )
+    .context(format!(
+        "Failed to write Ansible plugin to {}",
+        &ansible_lookup_plugin_path
+    ))
+}
+
 fn main() -> AHResult<()> {
     sodiumoxide::init().map_err(|_| anyhow!("Failed to initialize sodiumoxide"))?;
 
@@ -409,5 +438,6 @@ fn main() -> AHResult<()> {
             &o,
         ),
         SubCommand::SetOpaque(o) => run_set_opaque(&mut store, o),
+        SubCommand::InstallAnsiblePlugin => run_install_ansible_plugin(),
     }
 }

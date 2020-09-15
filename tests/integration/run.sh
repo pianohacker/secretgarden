@@ -331,6 +331,13 @@ function test_output_compatible_with_previous_versions() {
 	done
 }
 
+function test_ansible_plugin_can_be_installed {
+	export HOME=$PWD/home
+	assert_sg "install-ansible-plugin"
+
+	python -m py_compile $HOME/.ansible/plugins/lookup/secretgarden.py || exit 1
+}
+
 ## Test running loop
 function get_test_functions() {
 	awk '/^function test_/ { print $2 }' "${TEST_FILE}" | sed -e 's/()//'
