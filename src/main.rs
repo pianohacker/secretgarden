@@ -9,7 +9,7 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use base64::{self};
 use clap::Clap;
-use dirs;
+use dirs_next;
 use osshkeys::{cipher, keys};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -392,7 +392,7 @@ fn run_set_opaque(store: &mut impl SecretStore, s: SetOpaqueOpts) -> AHResult<()
 }
 
 fn run_install_ansible_plugin() -> AHResult<()> {
-    let home_dir_path = dirs::home_dir().ok_or(anyhow!(
+    let home_dir_path = dirs_next::home_dir().ok_or(anyhow!(
         "Could not determine your home directory; is $HOME set?"
     ))?;
 
