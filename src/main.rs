@@ -262,10 +262,10 @@ fn generate_password(p: &PasswordOpts) -> AHResult<String> {
     let mut result: String = String::new();
     let mut rng = rand::thread_rng();
 
-    result.push(PASSWORD_FIRST_CHARS[rng.gen_range(0, PASSWORD_FIRST_CHARS.len())] as char);
+    result.push(PASSWORD_FIRST_CHARS[rng.gen_range(0..PASSWORD_FIRST_CHARS.len())] as char);
 
     for _ in 1..p.length {
-        result.push(PASSWORD_CHARS[rng.gen_range(0, PASSWORD_CHARS.len())] as char);
+        result.push(PASSWORD_CHARS[rng.gen_range(0..PASSWORD_CHARS.len())] as char);
     }
 
     Ok(result)
