@@ -335,7 +335,7 @@ function test_ansible_plugin_can_be_installed {
 	export HOME=$PWD/home
 	assert_sg "install-ansible-plugin"
 
-	python -m py_compile $HOME/.ansible/plugins/lookup/secretgarden.py || exit 1
+	python3 -m py_compile $HOME/.ansible/plugins/lookup/secretgarden.py || exit 1
 }
 
 ## Test running loop

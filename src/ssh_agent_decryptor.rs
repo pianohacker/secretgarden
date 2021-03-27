@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Duration;
 use tempfile;
 
-use crate::SecretContainerFile;
+use crate::secret_store::SecretContainerFile;
 
 // File signature chosen a-la PNG; non-ASCII value, followed by line endings in both formats to
 // check for mangling.
