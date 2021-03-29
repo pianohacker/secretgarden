@@ -22,7 +22,7 @@ use crate::secret_store::{ContainedSecretStore, SecretStore};
 use crate::secret_types::opaque::{generate_opaque, run_set_opaque, OpaqueOpts, SetOpaqueOpts};
 use crate::secret_types::password::{generate_password, PasswordOpts};
 use crate::secret_types::ssh_key::{generate_ssh_key, transform_ssh_key, SshKeyOpts};
-use crate::secret_types::x509::{generate_x509, X509Opts};
+use crate::secret_types::x509::{generate_x509, transform_x509, X509Opts};
 use crate::ssh_agent_decryptor::SshAgentSecretContainerFile;
 use crate::types::WithCommonOpts;
 
@@ -129,7 +129,9 @@ fn main() -> AHResult<()> {
             transform_ssh_key,
             &o,
         ),
-        SubCommand::X509(o) => run_secret_type(&mut store, "x509", generate_x509, &o),
+        SubCommand::X509(o) => {
+            run_secret_type_with_transform(&mut store, "x509", generate_x509, transform_x509, &o)
+        }
 
         SubCommand::InstallAnsiblePlugin => run_install_ansible_plugin(),
     }

@@ -14,6 +14,15 @@ pub struct X509Opts {
     #[clap(flatten)]
     #[serde(skip)]
     common: CommonOpts,
+    #[serde(skip)]
+    #[clap(short, long)]
+    certificate: bool,
+    #[serde(skip)]
+    #[clap(short, long)]
+    private_key: bool,
+    #[serde(skip)]
+    #[clap(short = "P", long)]
+    public_key: bool,
     #[clap(short, long, default_value = "32")]
     length: usize,
 }
@@ -22,6 +31,34 @@ impl WithCommonOpts for X509Opts {
     fn common_opts(&self) -> &CommonOpts {
         &self.common
     }
+}
+
+pub fn transform_x509(certificate_and_private_key: String, opts: &X509Opts) -> AHResult<String> {
+    if !opts.certificate && !opts.private_key && !opts.public_key {
+        return Ok(certificate_and_private_key);
+    }
+
+    let mut result = String::new();
+
+    if opts.certificate {
+        let certificate = X509::from_pem(certificate_and_private_key.as_ref())?;
+
+        result += &String::from_utf8(certificate.to_pem()?)?;
+    }
+
+    if opts.private_key {
+        let private_key = PKey::private_key_from_pem(certificate_and_private_key.as_ref())?;
+
+        result += &String::from_utf8(private_key.private_key_to_pem_pkcs8()?)?;
+    }
+
+    if opts.public_key {
+        let private_key = PKey::private_key_from_pem(certificate_and_private_key.as_ref())?;
+
+        result += &String::from_utf8(private_key.public_key_to_pem()?)?;
+    }
+
+    Ok(result)
 }
 
 pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
