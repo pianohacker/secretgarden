@@ -22,6 +22,7 @@ use crate::secret_store::{ContainedSecretStore, SecretStore};
 use crate::secret_types::opaque::{generate_opaque, run_set_opaque, OpaqueOpts, SetOpaqueOpts};
 use crate::secret_types::password::{generate_password, PasswordOpts};
 use crate::secret_types::ssh_key::{generate_ssh_key, transform_ssh_key, SshKeyOpts};
+use crate::secret_types::x509::{generate_x509, X509Opts};
 use crate::ssh_agent_decryptor::SshAgentSecretContainerFile;
 use crate::types::WithCommonOpts;
 
@@ -34,17 +35,20 @@ struct Opts {
 
 #[derive(Clap)]
 enum SubCommand {
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get an opaque value")]
+    Opaque(OpaqueOpts),
+
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate a password")]
     Password(PasswordOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get an opaque value")]
-    Opaque(OpaqueOpts),
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value")]
+    SetOpaque(SetOpaqueOpts),
 
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key")]
     SshKey(SshKeyOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value")]
-    SetOpaque(SetOpaqueOpts),
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate")]
+    X509(X509Opts),
 
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to our home directory")]
     InstallAnsiblePlugin,
@@ -114,11 +118,10 @@ fn main() -> AHResult<()> {
     let mut store = ContainedSecretStore::new(SshAgentSecretContainerFile::new(ssh_auth_sock_path));
 
     match opts.subcmd {
+        SubCommand::Opaque(o) => run_secret_type(&mut store, "opaque", generate_opaque, &o),
         SubCommand::Password(o) => run_secret_type(&mut store, "password", generate_password, &o),
 
-        SubCommand::Opaque(o) => run_secret_type(&mut store, "opaque", generate_opaque, &o),
         SubCommand::SetOpaque(o) => run_set_opaque(&mut store, o),
-
         SubCommand::SshKey(o) => run_secret_type_with_transform(
             &mut store,
             "ssh-key",
@@ -126,6 +129,7 @@ fn main() -> AHResult<()> {
             transform_ssh_key,
             &o,
         ),
+        SubCommand::X509(o) => run_secret_type(&mut store, "x509", generate_x509, &o),
 
         SubCommand::InstallAnsiblePlugin => run_install_ansible_plugin(),
     }

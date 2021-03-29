@@ -312,6 +312,35 @@ function test_encryption_selects_ssh_key_types_with_deterministic_signatures() {
 	done
 }
 
+function test_x509_generates_valid_certificates() {
+	assert_sg "x509 cert1" > cert.pem
+	openssl x509 -noout < cert.pem || _assert_failed "x509 result was valid"
+}
+
+function test_x509_generates_valid_private_keys() {
+	assert_sg "x509 cert1" > cert.pem
+	openssl rsa -noout < cert.pem || _assert_failed "RSA result was valid"
+}
+
+function test_x509_subject_and_common_name_default_to_secret_name() {
+	assert_sg "x509 cert1" > cert.pem
+	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = cert1"
+	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = cert1"
+}
+
+function test_x509_not_before_and_not_before_default_to_a_year_apart() {
+	assert_sg "x509 cert1" > cert.pem
+	today="$(LC_ALL=C TZ=UTC date +"%b %d.*%Y.*")"
+	one_year="$(LC_ALL=C TZ=UTC date +"%b %d.*%Y.*" -d "1 year")"
+	assert_match "$(LC_ALL=C openssl x509 -noout -dates < cert.pem)" "notBefore=$today"$'\n'"notAfter=$one_year"
+}
+
+function test_x509_outputs_certificate_and_private_key_by_default() {
+	assert_sg "x509 cert1" > cert.pem
+	assert_match "$(cat cert.pem)" "BEGIN CERTIFICATE"
+	assert_match "$(cat cert.pem)" "BEGIN PRIVATE KEY"
+}
+
 function test_output_compatible_with_previous_versions() {
 	set -x 
 	IFS=$'\n'
