@@ -10,7 +10,12 @@ pub struct PasswordOpts {
     #[clap(flatten)]
     #[serde(skip)]
     common: CommonOpts,
-    #[clap(short, long, default_value = "32")]
+    #[clap(
+        short,
+        long,
+        default_value = "32",
+        about = "Length of the generated password."
+    )]
     length: usize,
 }
 

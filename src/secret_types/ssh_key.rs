@@ -22,9 +22,19 @@ pub struct SshKeyOpts {
     #[serde(skip)]
     #[clap(long)]
     public: bool,
-    #[clap(arg_enum, short, long, default_value = "ed-25519")]
+    #[clap(
+        arg_enum,
+        short,
+        long,
+        default_value = "ed-25519",
+        about = "Type of the generated SSH key."
+    )]
     type_: SshKeyType,
-    #[clap(short, long)]
+    #[clap(
+        short,
+        long,
+        about = "Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys."
+    )]
     bits: Option<usize>,
 }
 

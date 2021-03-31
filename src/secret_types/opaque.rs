@@ -25,11 +25,11 @@ pub fn generate_opaque(_: &OpaqueOpts) -> AHResult<String> {
 
 #[derive(Clap)]
 pub struct SetOpaqueOpts {
-    #[clap()]
+    #[clap(about = "Name of the secret to set")]
     name: String,
-    #[clap()]
+    #[clap(about = "The new value of the secret; if not provided, will be read on stdin")]
     value: Option<String>,
-    #[clap(long)]
+    #[clap(long, about = "Decode the secret's value with base64")]
     base64: bool,
 }
 

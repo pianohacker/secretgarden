@@ -35,22 +35,22 @@ struct Opts {
 
 #[derive(Clap)]
 enum SubCommand {
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get an opaque value")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get an opaque value", long_about = "Get an opaque value.\n\nOpaque values cannot be generated and must be set with `set-opaque`.\n\n")]
     Opaque(OpaqueOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate a password")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate a password", long_about = "Get or generate a password.")]
     Password(PasswordOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value", long_about = "Set an opaque value.")]
     SetOpaque(SetOpaqueOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key", long_about = "Get or generate an SSH key.")]
     SshKey(SshKeyOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate.")]
     X509(X509Opts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to our home directory")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]
     InstallAnsiblePlugin,
 }
 
