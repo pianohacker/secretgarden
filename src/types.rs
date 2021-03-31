@@ -6,13 +6,15 @@ use std::collections::HashMap;
 pub struct CommonOpts {
     #[clap()]
     pub name: String,
-    #[clap(long, about = "Output secrets encoded with base64")]
+    #[clap(short = "B", long, about = "Output secrets encoded with base64")]
     pub base64: bool,
     #[clap(
         arg_enum,
+        short,
         long,
         default_value = "converge",
-        about = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if different options are used or it is no longer valid."
+        about = "Whether to generate the secret if needed",
+        long_about = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if different options are used or it is no longer valid."
     )]
     pub generate: GenerateOpt,
 }

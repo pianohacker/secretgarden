@@ -44,10 +44,10 @@ enum SubCommand {
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value", long_about = "Set an opaque value.")]
     SetOpaque(SetOpaqueOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key", long_about = "Get or generate an SSH key.")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key", long_about = "Get or generate an SSH key. Will output the private key by default.")]
     SshKey(SshKeyOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate.")]
+    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate. Will output the certificate and private key by default.")]
     X509(X509Opts),
 
     #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]

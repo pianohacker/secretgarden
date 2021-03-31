@@ -4,6 +4,7 @@ use openssl::asn1::Asn1Time;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
 use openssl::rsa::Rsa;
+use openssl::x509::extension::{BasicConstraints, SubjectAlternativeName};
 use openssl::x509::{X509NameBuilder, X509};
 use serde::{Deserialize, Serialize};
 
@@ -15,16 +16,35 @@ pub struct X509Opts {
     #[serde(skip)]
     common: CommonOpts,
     #[serde(skip)]
-    #[clap(short, long)]
+    #[clap(
+        short,
+        long,
+        about = "Output the certificate",
+        long_about = "Output the certificate. Can be used with the other output options."
+    )]
     certificate: bool,
     #[serde(skip)]
-    #[clap(short, long)]
+    #[clap(
+        short,
+        long,
+        about = "Output the private key",
+        long_about = "Output the private key. Can be used with the other output options."
+    )]
     private_key: bool,
     #[serde(skip)]
-    #[clap(short = "P", long)]
+    #[clap(
+        short = "P",
+        long,
+        about = "Output the public key",
+        long_about = "Output the public key. Can be used with the other output options."
+    )]
     public_key: bool,
-    #[clap(short, long, default_value = "32")]
-    length: usize,
+    #[clap(long, about = "Add a DNS Subject Alternative Name to the certificate")]
+    dns_san: Vec<String>,
+    #[clap(long, about = "Add an IP Subject Alternative Name to the certificate")]
+    ip_san: Vec<String>,
+    #[clap(long, about = "Mark the certificate as a certificate authority")]
+    is_ca: bool,
 }
 
 impl WithCommonOpts for X509Opts {
@@ -79,6 +99,32 @@ pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
     cert_builder.set_not_before(&now)?;
     cert_builder.set_not_after(&expire)?;
     cert_builder.set_pubkey(&pkey)?;
+
+    if p.dns_san.len() > 0 || p.ip_san.len() > 0 {
+        let ctx = cert_builder.x509v3_context(None, None);
+        let mut san_builder = SubjectAlternativeName::new();
+
+        for dns in &p.dns_san {
+            san_builder.dns(dns);
+        }
+
+        for ip in &p.ip_san {
+            san_builder.ip(ip);
+        }
+
+        let san_ext = san_builder.build(&ctx)?;
+        cert_builder.append_extension(san_ext)?;
+    }
+
+    if p.is_ca {
+        let mut basic_builder = BasicConstraints::new();
+
+        basic_builder.critical();
+        basic_builder.ca();
+
+        cert_builder.append_extension(basic_builder.build()?)?;
+    }
+
     cert_builder.sign(&pkey, MessageDigest::sha256())?;
 
     Ok(String::from_utf8(cert_builder.build().to_pem()?)?

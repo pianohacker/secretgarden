@@ -373,6 +373,43 @@ function test_x509_can_output_public_key_only() {
 	openssl pkey -pubin -noout < cert.pem || _assert_failed "RSA public result was valid"
 }
 
+function test_x509_has_no_sans_by_default() {
+	assert_sg "x509 cert1" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "No extensions"
+}
+
+function test_x509_can_have_dns_sans() {
+	assert_sg "x509 cert1 --dns-san host.domain.example" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example"
+
+	assert_sg "x509 cert2 --dns-san host.domain.example host.example.domain" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example, DNS:host.example.domain"
+}
+
+function test_x509_can_have_ip_sans() {
+	assert_sg "x509 cert1 --ip-san 127.0.0.1" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "IP Address:127.0.0.1"
+
+	assert_sg "x509 cert2 --ip-san 127.0.0.1 ffee::1" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "IP Address:127.0.0.1, IP Address:FFEE:0:0:0:0:0:0:1"
+}
+
+function test_x509_can_have_mixed_sans() {
+	assert_sg "x509 cert2 --dns-san host.domain.example --ip-san 127.0.0.1 ffee::1 --dns-san host.example.domain" > cert.pem
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example, DNS:host.example.domain, IP Address:127.0.0.1, IP Address:FFEE:0:0:0:0:0:0:1"
+}
+
+function test_x509_is_not_a_ca_by_default() {
+	assert_sg "x509 cert1" > cert.pem
+	assert_match "$(openssl x509 -noout -ext basicConstraints < cert.pem)" "No extensions"
+}
+
+function test_x509_can_be_a_ca() {
+	assert_sg "x509 cert1 --is-ca" > cert.pem
+	assert_match "$(openssl x509 -noout -ext basicConstraints < cert.pem)" "critical
+    CA:TRUE"
+}
+
 function test_output_compatible_with_previous_versions() {
 	set -x 
 	IFS=$'\n'
