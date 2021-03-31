@@ -325,7 +325,7 @@ function test_x509_generates_valid_certificates() {
 
 function test_x509_generates_valid_private_keys() {
 	assert_sg "x509 cert1" > cert.pem
-	openssl rsa -noout -check < cert.pem || _assert_failed "RSA result was valid"
+	openssl pkey -noout -check < cert.pem || _assert_failed "RSA result was valid"
 }
 
 function test_x509_subject_and_common_name_default_to_secret_name() {
@@ -357,7 +357,7 @@ function test_x509_can_output_private_key_only() {
 	assert_sg "x509 --private-key cert1" > cert.pem
 	assert_no_match "$(cat cert.pem)" "BEGIN CERTIFICATE"
 	assert_match "$(cat cert.pem)" "BEGIN PRIVATE KEY"
-	openssl rsa -noout -check < cert.pem || _assert_failed "RSA result was valid"
+	openssl pkey -noout -check < cert.pem || _assert_failed "RSA result was valid"
 }
 
 function test_x509_outputs_both_when_asked_for_certificate_and_private_key() {
@@ -370,7 +370,7 @@ function test_x509_can_output_public_key_only() {
 	assert_sg "x509 --public-key cert1" > cert.pem
 	assert_no_match "$(cat cert.pem)" "BEGIN CERTIFICATE"
 	assert_match "$(cat cert.pem)" "BEGIN PUBLIC KEY"
-	openssl rsa -noout -check < cert.pem || _assert_failed "RSA result was valid"
+	openssl pkey -pubin -noout < cert.pem || _assert_failed "RSA public result was valid"
 }
 
 function test_output_compatible_with_previous_versions() {
