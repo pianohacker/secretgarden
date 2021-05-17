@@ -18,14 +18,7 @@
  * damage or existence of a defect, except proven that it results out
  * of said person’s immediate fault when using the work as intended.
  */
-// Modified to accept commas between attributes
-use std::collections::HashMap;
-
-#[derive(Clone, Debug)]
-pub struct DistinguishedName {
-    pub common_name: Option<String>,
-    pub attributes: HashMap<String, String>,
-}
+// Modified to accept commas between attributes and only return a list of attributes.
 
 struct ParserState<'a> {
     input: &'a [char],
@@ -64,8 +57,8 @@ impl<'a> Parser<'a> {
         };
     }
 
-    pub fn parse_attributes(self: &mut Parser<'a>) -> Result<HashMap<String, String>, ()> {
-        let mut map = HashMap::<String, String>::new();
+    pub fn parse_attributes(self: &mut Parser<'a>) -> Result<Vec<(String, String)>, ()> {
+        let mut result = Vec::new();
 
         loop {
             if self.state.eof() {
@@ -74,7 +67,7 @@ impl<'a> Parser<'a> {
 
             match self.parse_attribute() {
                 Ok(Some((k, v))) => {
-                    map.insert(k, v);
+                    result.push((k, v));
                 }
                 Ok(None) => return Err(()),
                 Err(_) => return Err(()),
@@ -96,7 +89,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        return Ok(map);
+        return Ok(result);
     }
 
     pub fn parse_attribute(self: &mut Parser<'a>) -> Result<Option<(String, String)>, ()> {
@@ -364,21 +357,15 @@ pub fn is_hexchar(chr: char) -> bool {
     return (chr >= '0' && chr <= '9') || (chr >= 'A' && chr <= 'F') || (chr >= 'a' && chr <= 'f');
 }
 
-pub fn parse_distinguished_name(input: &[char]) -> Result<DistinguishedName, ()> {
+pub fn parse_distinguished_name(input: &[char]) -> Result<Vec<(String, String)>, ()> {
     let mut parser = Parser::new_with_input(input);
 
-    return match parser.parse_attributes() {
-        Ok(attr) => Ok(DistinguishedName {
-            common_name: attr.get("CN").map(|x| x.to_owned()),
-            attributes: attr,
-        }),
-        Err(_) => Err(()),
-    };
+    parser.parse_attributes()
 }
 
-pub fn parse_distinguished_name_str(input: &str) -> Result<DistinguishedName, ()> {
+pub fn parse_distinguished_name_str(input: &str) -> Result<Vec<(String, String)>, ()> {
     let chars = input.chars().collect::<Vec<char>>();
-    return parse_distinguished_name(&chars);
+    parse_distinguished_name(&chars)
 }
 
 #[cfg(test)]
@@ -389,111 +376,111 @@ mod tests {
     fn test_empty() {
         let str = "";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 0);
+        assert!(res.len() == 0);
     }
 
     #[test]
     fn single_attribute() {
         let str = "C=DE";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("C").unwrap() == "DE");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
     }
 
     #[test]
     fn single_attribute_whitespace() {
         let str = "CN=Nyan Cat";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_escaped_quote() {
         let str = "CN=Nyan \\\"Cat\\\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan \"Cat\"");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan \"Cat\"".to_string()));
     }
 
     #[test]
     fn single_attribute_escaped_special() {
         let str = "CN=Nyan\\=Cat";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan=Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan=Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_escaped_escape() {
         let str = "CN=Nyan\\\\Cat";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan\\Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan\\Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_hexpair() {
         let str = "CN=Nyan\\21Cat\\3F";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan!Cat?");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan!Cat?".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted() {
         let str = "C=\"DE\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("C").unwrap() == "DE");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted_whitespace() {
         let str = "CN=\"Nyan Cat\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted_escaped_quote() {
         let str = "CN=\"Nyan \\\"Cat\\\"\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan \"Cat\"");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan \"Cat\"".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted_escaped_special() {
         let str = "CN=\"Nyan\\=Cat\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan=Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan=Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted_escaped_escape() {
         let str = "CN=\"Nyan\\\\Cat\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan\\Cat");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan\\Cat".to_string()));
     }
 
     #[test]
     fn single_attribute_quoted_hexpair() {
         let str = "CN=\"Nyan\\21Cat\\3F\"";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "Nyan!Cat?");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "Nyan!Cat?".to_string()));
     }
 
     #[test]
     fn single_attribute_hexstring() {
         let str = "CN=#4E59414E213F";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 1);
-        assert!(res.attributes.get("CN").unwrap() == "NYAN!?");
+        assert!(res.len() == 1);
+        assert!(res[0] == ("CN".to_string(), "NYAN!?".to_string()));
     }
 
     #[test]
@@ -528,42 +515,42 @@ mod tests {
     fn multiple_attributes() {
         let str = "C=DE,L=Berlin,ST=Berlin";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 3);
-        assert!(res.attributes.get("C").unwrap() == "DE");
-        assert!(res.attributes.get("L").unwrap() == "Berlin");
-        assert!(res.attributes.get("ST").unwrap() == "Berlin");
+        assert!(res.len() == 3);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
+        assert!(res[1] == ("L".to_string(), "Berlin".to_string()));
+        assert!(res[2] == ("ST".to_string(), "Berlin".to_string()));
     }
 
     #[test]
     fn multiple_attributes_space() {
         let str = "C=DE, L=Berlin, ST=Berlin";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 3);
-        assert!(res.attributes.get("C").unwrap() == "DE");
-        assert!(res.attributes.get("L").unwrap() == "Berlin");
-        assert!(res.attributes.get("ST").unwrap() == "Berlin");
+        assert!(res.len() == 3);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
+        assert!(res[1] == ("L".to_string(), "Berlin".to_string()));
+        assert!(res[2] == ("ST".to_string(), "Berlin".to_string()));
     }
 
     #[test]
     fn multiple_attributes_alt() {
         let str = "C=DE,L=Berlin+ST=Berlin";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.len() == 3);
-        assert!(res.attributes.get("C").unwrap() == "DE");
-        assert!(res.attributes.get("L").unwrap() == "Berlin");
-        assert!(res.attributes.get("ST").unwrap() == "Berlin");
+        assert!(res.len() == 3);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
+        assert!(res[1] == ("L".to_string(), "Berlin".to_string()));
+        assert!(res[2] == ("ST".to_string(), "Berlin".to_string()));
     }
 
     #[test]
     fn full() {
         let str = "C=DE,CN=paul \\<test\\>,OU=ACME Inc.,O=ACME Inc.,L=Berlin,ST=Berlin";
         let res = parse_distinguished_name_str(str).unwrap();
-        assert!(res.attributes.get("CN").unwrap() == "paul <test>");
-        assert!(res.attributes.len() == 6);
-        assert!(res.attributes.get("C").unwrap() == "DE");
-        assert!(res.attributes.get("L").unwrap() == "Berlin");
-        assert!(res.attributes.get("ST").unwrap() == "Berlin");
-        assert!(res.attributes.get("O").unwrap() == "ACME Inc.");
-        assert!(res.attributes.get("OU").unwrap() == "ACME Inc.");
+        assert!(res.len() == 6);
+        assert!(res[0] == ("C".to_string(), "DE".to_string()));
+        assert!(res[1] == ("CN".to_string(), "paul <test>".to_string()));
+        assert!(res[2] == ("OU".to_string(), "ACME Inc.".to_string()));
+        assert!(res[3] == ("O".to_string(), "ACME Inc.".to_string()));
+        assert!(res[4] == ("L".to_string(), "Berlin".to_string()));
+        assert!(res[5] == ("ST".to_string(), "Berlin".to_string()));
     }
 }

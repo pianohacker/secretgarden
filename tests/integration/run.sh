@@ -388,8 +388,8 @@ function test_x509_common_name_can_be_changed() {
 
 function test_x509_subject_can_be_changed() {
 	assert_sg x509 cert1 --subject "CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE" > cert.pem
-	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Common name"
-	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Common name"
+	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
+	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
 }
 
 function test_x509_is_not_a_ca_by_default() {
@@ -419,6 +419,13 @@ function test_x509_only_uses_cas_that_are_cas() {
 function test_x509_fails_when_ca_expired() {
 	assert_sg x509 ca --duration-days 0 --is-ca > ca1a.pem
 	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg_fails_matching "expired" x509 child --ca ca
+}
+
+function test_x509_issuer_correct_for_ca_with_custom_subject() {
+	assert_sg x509 ca --is-ca --subject "CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE" > ca.pem
+	assert_sg x509 child --ca ca > child.pem
+	assert_match "$(openssl x509 -noout -subject < child.pem)" "subject=CN = child"
+	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
 }
 
 function test_output_compatible_with_previous_versions() {

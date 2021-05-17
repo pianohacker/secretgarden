@@ -8,7 +8,7 @@ use std::fmt::Debug;
 pub struct CommonOpts {
     #[clap()]
     pub name: String,
-    #[clap(short = "B", long, about = "Output secrets encoded with base64")]
+    #[clap(short = 'B', long, about = "Output secrets encoded with base64")]
     pub base64: bool,
     #[clap(
         arg_enum,

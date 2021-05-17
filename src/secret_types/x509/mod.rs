@@ -38,7 +38,7 @@ pub struct X509Opts {
     private_key: bool,
     #[serde(skip)]
     #[clap(
-        short = "P",
+        short = 'P',
         long,
         about = "Output the public key",
         long_about = "Output the public key. Can be used with the other output options."
@@ -91,10 +91,6 @@ impl ShouldCauseSecretRegeneration for X509Opts {
         let certificate = X509::from_pem(secret.value.as_ref())?;
         let now = Asn1Time::days_from_now(0)?;
 
-        dbg!(&certificate.not_after());
-        dbg!(now.as_ref());
-        dbg!(certificate.not_after().compare(&now)?);
-
         Ok(certificate.not_after() < &now)
     }
 }
@@ -141,8 +137,7 @@ pub fn get_cert_name(p: &X509Opts) -> AHResult<openssl::x509::X509Name> {
             let dn = rfc2253::parse_distinguished_name_str(s)
                 .map_err(|_| anyhow!("failed to parse subject"))?;
 
-            for (name, value) in dn.attributes {
-                dbg!(&name, &value);
+            for (name, value) in dn {
                 cert_name_builder.append_entry_by_text(&name, &value)?;
             }
         }
