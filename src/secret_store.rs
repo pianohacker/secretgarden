@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Context, Result as AHResult};
-use serde::{Deserialize, Serialize};
+use anyhow::{anyhow, bail, Context, Result as AHResult};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::types::{GenerateOpt, Secret, SecretMap, WithCommonOpts};
+use crate::types::{GenerateOpt, OptionsType, Secret, SecretMap};
 
 const DEFAULT_FILENAME: &str = "secretgarden.dat";
 
@@ -13,12 +13,18 @@ struct SecretFile {
 }
 
 pub trait SecretStore {
-    fn get_or_generate<OptsT: WithCommonOpts>(
+    fn get_or_generate<'a, OptsT: OptionsType<'a>>(
         &mut self,
         f: impl Fn(&OptsT) -> AHResult<String>,
         secret_type: &str,
         opts: &OptsT,
     ) -> AHResult<String>;
+
+    fn get_secret_with_options<T: DeserializeOwned>(
+        &mut self,
+        secret_type: &str,
+        name: &str,
+    ) -> AHResult<(String, T)>;
 
     fn set_opaque(&mut self, key: String, value: String) -> AHResult<()>;
 }
@@ -77,7 +83,7 @@ impl<S: SecretContainerFile> ContainedSecretStore<S> {
 }
 
 impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
-    fn get_or_generate<OptsT: WithCommonOpts>(
+    fn get_or_generate<'a, OptsT: OptionsType<'a>>(
         &mut self,
         f: impl Fn(&OptsT) -> AHResult<String>,
         secret_type: &str,
@@ -91,16 +97,18 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         .context("Failed to deserialize options")?;
 
         if let Some(secret) = secrets.get(&common_opts.name) {
-            if secret.options == serialized_opts || common_opts.generate == GenerateOpt::Once {
+            if !opts.should_cause_secret_regeneration(secret)?
+                || common_opts.generate == GenerateOpt::Once
+            {
                 return Ok(secret.value.to_string());
             }
         }
 
         if common_opts.generate == GenerateOpt::Never {
-            return Err(anyhow!(
+            bail!(
                 "Secret {} does not exist and generation is disabled",
                 common_opts.name
-            ));
+            );
         }
 
         let value = f(opts)?;
@@ -115,6 +123,32 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         self._store_secrets()?;
 
         Ok(value)
+    }
+
+    fn get_secret_with_options<T: DeserializeOwned>(
+        &mut self,
+        secret_type: &str,
+        name: &str,
+    ) -> AHResult<(String, T)> {
+        let secrets = self._load_secrets()?;
+
+        let secret = secrets
+            .get(name)
+            .ok_or(anyhow!("Secret {} does not exist", name))?;
+
+        if secret._secret_type != secret_type {
+            return Err(anyhow!(
+                "Expected secret {} to be of type {}, was {}",
+                name,
+                secret_type,
+                secret._secret_type,
+            ));
+        }
+
+        let secret_opts: T = serde_json::from_value(secret.options.clone())
+            .context("Failed to deserialize options")?;
+
+        Ok((secret.value.clone(), secret_opts))
     }
 
     fn set_opaque(&mut self, key: String, value: String) -> AHResult<()> {

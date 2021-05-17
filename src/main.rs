@@ -22,9 +22,9 @@ use crate::secret_store::{ContainedSecretStore, SecretStore};
 use crate::secret_types::opaque::{generate_opaque, run_set_opaque, OpaqueOpts, SetOpaqueOpts};
 use crate::secret_types::password::{generate_password, PasswordOpts};
 use crate::secret_types::ssh_key::{generate_ssh_key, transform_ssh_key, SshKeyOpts};
-use crate::secret_types::x509::{generate_x509, transform_x509, X509Opts};
+use crate::secret_types::x509::{run_x509, X509Opts};
 use crate::ssh_agent_decryptor::SshAgentSecretContainerFile;
-use crate::types::WithCommonOpts;
+use crate::types::OptionsType;
 
 #[derive(Clap)]
 #[clap(version = env!("CARGO_PKG_VERSION"))]
@@ -54,7 +54,7 @@ enum SubCommand {
     InstallAnsiblePlugin,
 }
 
-fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
+fn run_secret_type_with_transform<'a, OptsT: OptionsType<'a>>(
     store: &mut impl SecretStore,
     secret_type: &str,
     generator: impl Fn(&OptsT) -> AHResult<String>,
@@ -72,7 +72,7 @@ fn run_secret_type_with_transform<OptsT: WithCommonOpts>(
     Ok(())
 }
 
-fn run_secret_type<OptsT: WithCommonOpts>(
+fn run_secret_type<'a, OptsT: OptionsType<'a>>(
     store: &mut impl SecretStore,
     secret_type: &str,
     generator: impl Fn(&OptsT) -> AHResult<String>,
@@ -129,9 +129,7 @@ fn main() -> AHResult<()> {
             transform_ssh_key,
             &o,
         ),
-        SubCommand::X509(o) => {
-            run_secret_type_with_transform(&mut store, "x509", generate_x509, transform_x509, &o)
-        }
+        SubCommand::X509(o) => run_x509(&mut store, &o),
 
         SubCommand::InstallAnsiblePlugin => run_install_ansible_plugin(),
     }

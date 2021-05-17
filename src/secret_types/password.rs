@@ -2,10 +2,11 @@ use anyhow::Result as AHResult;
 use clap::Clap;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 use crate::types::{CommonOpts, WithCommonOpts};
 
-#[derive(Clap, Serialize, Deserialize, PartialEq)]
+#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PasswordOpts {
     #[clap(flatten)]
     #[serde(skip)]

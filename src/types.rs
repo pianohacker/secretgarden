@@ -1,8 +1,10 @@
+use anyhow::Result as AHResult;
 use clap::Clap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Debug;
 
-#[derive(Clap, Clone, Default, PartialEq)]
+#[derive(Clap, Clone, Debug, Default, PartialEq)]
 pub struct CommonOpts {
     #[clap()]
     pub name: String,
@@ -23,7 +25,17 @@ pub trait WithCommonOpts: Serialize {
     fn common_opts(&self) -> &CommonOpts;
 }
 
-#[derive(Clap, Clone, PartialEq)]
+pub trait OptionsType<'a>:
+    WithCommonOpts + ShouldCauseSecretRegeneration + Deserialize<'a> + Debug
+{
+}
+
+impl<'a, T> OptionsType<'a> for T where
+    T: WithCommonOpts + ShouldCauseSecretRegeneration + Deserialize<'a> + Debug
+{
+}
+
+#[derive(Clap, Clone, Debug, PartialEq)]
 pub enum GenerateOpt {
     Never,
     Once,
@@ -33,6 +45,21 @@ pub enum GenerateOpt {
 impl Default for GenerateOpt {
     fn default() -> Self {
         GenerateOpt::Converge
+    }
+}
+
+pub trait ShouldCauseSecretRegeneration {
+    fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool>;
+}
+
+impl<T> ShouldCauseSecretRegeneration for T
+where
+    T: PartialEq + Serialize + std::fmt::Debug,
+{
+    fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool> {
+        let serialized_self = serde_json::to_value(&self)?;
+
+        Ok(serialized_self != secret.options)
     }
 }
 

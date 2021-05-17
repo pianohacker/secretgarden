@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use clap::Clap;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 use crate::types::{CommonOpts, WithCommonOpts};
 use osshkeys::{cipher, keys};
 
-#[derive(Clap, Serialize, Deserialize, PartialEq)]
+#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -14,7 +15,7 @@ enum SshKeyType {
     Ed25519,
 }
 
-#[derive(Clap, Serialize, Deserialize)]
+#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SshKeyOpts {
     #[clap(flatten)]
     #[serde(skip)]

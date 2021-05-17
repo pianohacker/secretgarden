@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use clap::Clap;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use std::io::{self, Read};
 
 use crate::secret_store::SecretStore;
 use crate::types::{CommonOpts, WithCommonOpts};
 
-#[derive(Clap, Serialize, Deserialize)]
+#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OpaqueOpts {
     #[clap(flatten)]
     #[serde(skip)]
