@@ -29,5 +29,5 @@ ssh-agent = "0.2.3"
 tempfile = "3.2"
 
 [dependencies.openssl-sys]
-version = "0.10.*"
+version = "0.9.62"
 features = [ "vendored" ]
