@@ -5,6 +5,9 @@ authors = ["Jesse Weaver <pianohacker@gmail.com>"]
 edition = "2018"
 description = "tool for generating and securely storing secrets"
 license = "MPL-2.0"
+documentation = "https://docs.rs/secretgarden"
+repository = "https://github.com/pianohacker/secretgarden"
+homepage = "https://github.com/pianohacker/secretgarden"
 
 [features]
 # Prints each step of key derivation.
