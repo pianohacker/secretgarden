@@ -67,7 +67,9 @@ pub type SecretMap = HashMap<String, Secret>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Secret {
-    pub _secret_type: String,
+    // Compatibility with the old name
+    #[serde(alias = "_secret_type")]
+    pub secret_type: String,
     pub value: String,
     pub options: serde_json::Value,
 }

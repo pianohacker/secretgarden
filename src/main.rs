@@ -11,6 +11,7 @@ use base64;
 use clap::Clap;
 use dirs_next;
 use git_version::git_version;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 
@@ -59,6 +60,9 @@ enum SubCommand {
     #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate. Will output the certificate and private key by default.")]
     X509(X509Opts),
 
+    #[clap(version = SECRETGARDEN_VERSION, about = "List all known secrets", long_about = "List all known secrets.")]
+    List(ListOpts),
+
     #[clap(version = SECRETGARDEN_VERSION, about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]
     InstallAnsiblePlugin,
 }
@@ -88,6 +92,21 @@ fn run_secret_type<'a, OptsT: OptionsType<'a>>(
     opts: &OptsT,
 ) -> AHResult<()> {
     run_secret_type_with_transform(store, secret_type, generator, |x, _| Ok(x), opts)
+}
+
+#[derive(Clap, Clone, Debug, Serialize, Deserialize)]
+pub struct ListOpts {}
+
+fn run_list(store: &mut impl SecretStore, _: ListOpts) -> AHResult<()> {
+    let mut secrets: Vec<_> = store.get_secrets()?.iter().collect();
+
+    secrets.sort_by(|(a_name, _), (b_name, _)| a_name.cmp(b_name));
+
+    for (name, secret) in secrets {
+        println!("{}\t{}", name, secret.secret_type);
+    }
+
+    Ok(())
 }
 
 fn run_install_ansible_plugin() -> AHResult<()> {
@@ -139,6 +158,8 @@ fn main() -> AHResult<()> {
             &o,
         ),
         SubCommand::X509(o) => run_x509(&mut store, &o),
+
+        SubCommand::List(o) => run_list(&mut store, o),
 
         SubCommand::InstallAnsiblePlugin => run_install_ansible_plugin(),
     }

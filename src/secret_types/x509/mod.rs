@@ -220,7 +220,7 @@ pub fn run_x509(store: &mut impl SecretStore, opts: &X509Opts) -> AHResult<()> {
         }
 
         if ca_options.should_cause_secret_regeneration(&Secret {
-            _secret_type: "x509".to_string(),
+            secret_type: "x509".to_string(),
             options: serde_json::to_value(ca_options.clone())?,
             value: ca_contents.clone(),
         })? {

@@ -27,6 +27,8 @@ pub trait SecretStore {
     ) -> AHResult<(String, T)>;
 
     fn set_opaque(&mut self, key: String, value: String) -> AHResult<()>;
+
+    fn get_secrets<'a>(&'a mut self) -> AHResult<&'a SecretMap>;
 }
 
 pub struct ContainedSecretStore<S: SecretContainerFile> {
@@ -115,7 +117,7 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         secrets.insert(
             common_opts.name.to_owned(),
             Secret {
-                _secret_type: secret_type.to_string(),
+                secret_type: secret_type.to_string(),
                 value: value.to_owned(),
                 options: serialized_opts.clone(),
             },
@@ -136,12 +138,12 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
             .get(name)
             .ok_or(anyhow!("Secret {} does not exist", name))?;
 
-        if secret._secret_type != secret_type {
+        if secret.secret_type != secret_type {
             return Err(anyhow!(
                 "Expected secret {} to be of type {}, was {}",
                 name,
                 secret_type,
-                secret._secret_type,
+                secret.secret_type,
             ));
         }
 
@@ -157,7 +159,7 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         secrets.insert(
             key,
             Secret {
-                _secret_type: "opaque".to_string(),
+                secret_type: "opaque".to_string(),
                 value: value.clone(),
                 options: serde_json::Value::Object(serde_json::Map::new()),
             },
@@ -165,5 +167,11 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         self._store_secrets()?;
 
         Ok(())
+    }
+
+    fn get_secrets<'a>(&'a mut self) -> AHResult<&'a SecretMap> {
+        self._load_secrets()?;
+
+        Ok(self._secrets.as_ref().unwrap())
     }
 }
