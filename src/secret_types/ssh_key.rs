@@ -1,12 +1,12 @@
 use anyhow::{anyhow, Context, Result as AHResult};
-use clap::Clap;
+use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use crate::types::{CommonOpts, WithCommonOpts};
 use osshkeys::{cipher, keys};
 
-#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(ValueEnum, Clone, Debug, Serialize, Deserialize, PartialEq)]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -15,7 +15,7 @@ enum SshKeyType {
     Ed25519,
 }
 
-#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SshKeyOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -24,17 +24,17 @@ pub struct SshKeyOpts {
     #[clap(long)]
     public: bool,
     #[clap(
-        arg_enum,
+        value_enum,
         short,
         long,
         default_value = "ed-25519",
-        about = "Type of the generated SSH key."
+        help = "Type of the generated SSH key."
     )]
     type_: SshKeyType,
     #[clap(
         short,
         long,
-        about = "Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys."
+        help = "Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys."
     )]
     bits: Option<usize>,
 }

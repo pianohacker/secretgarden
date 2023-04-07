@@ -1,12 +1,12 @@
 use anyhow::Result as AHResult;
-use clap::Clap;
+use clap::Parser;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use crate::types::{CommonOpts, WithCommonOpts};
 
-#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PasswordOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -15,7 +15,7 @@ pub struct PasswordOpts {
         short,
         long,
         default_value = "32",
-        about = "Length of the generated password."
+        help = "Length of the generated password."
     )]
     length: usize,
 }

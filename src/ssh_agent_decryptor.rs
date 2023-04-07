@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Context, Result as AHResult};
 use argon2;
 use base64::display::Base64Display;
+use base64::engine::general_purpose::STANDARD;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
 use bincode;
 use byteorder::{BigEndian, ByteOrder};
 use crypto::{digest::Digest, sha2::Sha256};
@@ -199,9 +201,9 @@ impl SecretContainerFile for SshAgentSecretContainerFile {
             })
             .ok_or(anyhow!(
                 "Cannot find key in agent with fingerprint SHA256:{} ({})",
-                Base64Display::with_config(
+                Base64Display::new(
                     &secrets_wrapper.encrypting_ssh_identity_fingerprint,
-                    base64::STANDARD_NO_PAD
+                    &STANDARD_NO_PAD
                 ),
                 secrets_wrapper.encrypting_ssh_identity_comment,
             ))?;
@@ -220,23 +222,23 @@ impl SecretContainerFile for SshAgentSecretContainerFile {
             eprintln!("Decryption parameters: ");
             eprintln!(
                 "  Signed input: {}",
-                Base64Display::with_config(&secrets_wrapper.signed_input, base64::STANDARD)
+                Base64Display::new(&secrets_wrapper.signed_input, &STANDARD)
             );
             eprintln!(
                 "  Signed output: {}",
-                Base64Display::with_config(&signed_output, base64::STANDARD)
+                Base64Display::new(&signed_output, &STANDARD)
             );
             eprintln!(
                 "  Argon2 salt: {}",
-                Base64Display::with_config(&secrets_wrapper.argon2_salt, base64::STANDARD)
+                Base64Display::new(&secrets_wrapper.argon2_salt, &STANDARD)
             );
             eprintln!(
                 "  Argon2 hash: {}",
-                Base64Display::with_config(&argon2_hash, base64::STANDARD)
+                Base64Display::new(&argon2_hash, &STANDARD)
             );
             eprintln!(
                 "  Secretbox nonce: {}",
-                Base64Display::with_config(&secrets_wrapper.secretbox_nonce, base64::STANDARD)
+                Base64Display::new(&secrets_wrapper.secretbox_nonce, &STANDARD)
             );
             eprintln!();
         }
@@ -277,23 +279,23 @@ impl SecretContainerFile for SshAgentSecretContainerFile {
             eprintln!("Encryption parameters: ");
             eprintln!(
                 "  Signed input: {}",
-                Base64Display::with_config(&signed_input, base64::STANDARD)
+                Base64Display::new(&signed_input, &STANDARD)
             );
             eprintln!(
                 "  Signed output: {}",
-                Base64Display::with_config(&signed_output, base64::STANDARD)
+                Base64Display::new(&signed_output, &STANDARD)
             );
             eprintln!(
                 "  Argon2 salt: {}",
-                Base64Display::with_config(&argon2_salt, base64::STANDARD)
+                Base64Display::new(&argon2_salt, &STANDARD)
             );
             eprintln!(
                 "  Argon2 hash: {}",
-                Base64Display::with_config(&argon2_hash, base64::STANDARD)
+                Base64Display::new(&argon2_hash, &STANDARD)
             );
             eprintln!(
                 "  Secretbox nonce: {}",
-                Base64Display::with_config(&secretbox_nonce, base64::STANDARD)
+                Base64Display::new(&secretbox_nonce, &STANDARD)
             );
             eprintln!();
         }

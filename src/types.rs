@@ -1,22 +1,22 @@
 use anyhow::Result as AHResult;
-use clap::Clap;
+use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-#[derive(Clap, Clone, Debug, Default, PartialEq)]
+#[derive(Parser, Clone, Debug, Default, PartialEq)]
 pub struct CommonOpts {
     #[clap()]
     pub name: String,
-    #[clap(short = 'B', long, about = "Output secrets encoded with base64")]
+    #[clap(short = 'B', long, help = "Output secrets encoded with base64")]
     pub base64: bool,
     #[clap(
-        arg_enum,
+        value_enum,
         short,
         long,
         default_value = "converge",
-        about = "Whether to generate the secret if needed",
-        long_about = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if different options are used or it is no longer valid."
+        help = "Whether to generate the secret if needed",
+        long_help = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if different options are used or it is no longer valid."
     )]
     pub generate: GenerateOpt,
 }
@@ -35,7 +35,7 @@ impl<'a, T> OptionsType<'a> for T where
 {
 }
 
-#[derive(Clap, Clone, Debug, PartialEq)]
+#[derive(ValueEnum, Clone, Debug, PartialEq)]
 pub enum GenerateOpt {
     Never,
     Once,

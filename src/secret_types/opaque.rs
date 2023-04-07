@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result as AHResult};
-use clap::Clap;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::io::{self, Read};
@@ -7,7 +9,7 @@ use std::io::{self, Read};
 use crate::secret_store::SecretStore;
 use crate::types::{CommonOpts, WithCommonOpts};
 
-#[derive(Clap, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OpaqueOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -24,13 +26,13 @@ pub fn generate_opaque(_: &OpaqueOpts) -> AHResult<String> {
     Err(anyhow!("Cannot generate opaque value"))
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 pub struct SetOpaqueOpts {
-    #[clap(about = "Name of the secret to set")]
+    #[clap(help = "Name of the secret to set")]
     name: String,
-    #[clap(about = "The new value of the secret; if not provided, will be read on stdin")]
+    #[clap(help = "The new value of the secret; if not provided, will be read on stdin")]
     value: Option<String>,
-    #[clap(long, about = "Decode the secret's value with base64")]
+    #[clap(long, help = "Decode the secret's value with base64")]
     base64: bool,
 }
 
@@ -51,7 +53,8 @@ pub fn run_set_opaque(store: &mut impl SecretStore, s: SetOpaqueOpts) -> AHResul
     }
 
     if s.base64 {
-        value = base64::decode(value)
+        value = STANDARD
+            .decode(value)
             .context("Failed to decode provided value as base64")?
             .iter()
             .map(|c| *c as char)

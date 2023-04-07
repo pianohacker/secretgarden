@@ -1,7 +1,9 @@
 mod rfc2253;
 
 use anyhow::{anyhow, bail, Result as AHResult};
-use clap::Clap;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
+use clap::Parser;
 use openssl::asn1::Asn1Time;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
@@ -14,7 +16,7 @@ use std::fmt::Debug;
 use crate::secret_store::SecretStore;
 use crate::types::{CommonOpts, Secret, ShouldCauseSecretRegeneration, WithCommonOpts};
 
-#[derive(Clap, Clone, Debug, Serialize, Deserialize)]
+#[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct X509Opts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -24,53 +26,53 @@ pub struct X509Opts {
     #[clap(
         short,
         long,
-        about = "Output the certificate",
-        long_about = "Output the certificate. Can be used with the other output options."
+        help = "Output the certificate",
+        long_help = "Output the certificate. Can be used with the other output options."
     )]
     certificate: bool,
     #[serde(skip)]
     #[clap(
         short,
         long,
-        about = "Output the private key",
-        long_about = "Output the private key. Can be used with the other output options."
+        help = "Output the private key",
+        long_help = "Output the private key. Can be used with the other output options."
     )]
     private_key: bool,
     #[serde(skip)]
     #[clap(
         short = 'P',
         long,
-        about = "Output the public key",
-        long_about = "Output the public key. Can be used with the other output options."
+        help = "Output the public key",
+        long_help = "Output the public key. Can be used with the other output options."
     )]
     public_key: bool,
 
-    #[clap(long, about = "Add a DNS Subject Alternative Name to the certificate")]
+    #[clap(long, help = "Add a DNS Subject Alternative Name to the certificate")]
     dns_san: Vec<String>,
-    #[clap(long, about = "Add an IP Subject Alternative Name to the certificate")]
+    #[clap(long, help = "Add an IP Subject Alternative Name to the certificate")]
     ip_san: Vec<String>,
-    #[clap(long, about = "Mark the certificate as a certificate authority")]
+    #[clap(long, help = "Mark the certificate as a certificate authority")]
     is_ca: bool,
     #[clap(
         long,
         default_value = "365",
-        about = "Days from now to certificate expiration in days"
+        help = "Days from now to certificate expiration in days"
     )]
     duration_days: u32,
     #[clap(
         long,
-        about = "Set subject to given common name [defaults to secret name]"
+        help = "Set subject to given common name [defaults to secret name]"
     )]
     common_name: Option<String>,
     #[clap(
         long,
-        about = "Set subject to given string [defaults to CN=secret name]"
+        help = "Set subject to given string [defaults to CN=secret name]"
     )]
     subject: Option<String>,
 
     #[clap(
         long,
-        about = "Name of a X.509 secret to serve as this certificate's CA."
+        help = "Name of a X.509 secret to serve as this certificate's CA."
     )]
     ca: Option<String>,
 
@@ -233,7 +235,7 @@ pub fn run_x509(store: &mut impl SecretStore, opts: &X509Opts) -> AHResult<()> {
     let mut value = store.get_or_generate(generate_x509, "x509", &opts)?;
 
     if opts.common_opts().base64 {
-        value = base64::encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
+        value = STANDARD.encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
     println!("{}", transform_x509(value, &opts)?);

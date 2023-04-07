@@ -7,8 +7,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use anyhow::{anyhow, Context, Result as AHResult};
-use base64;
-use clap::Clap;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
+use clap::Parser;
 use dirs_next;
 use git_version::git_version;
 use serde::{Deserialize, Serialize};
@@ -36,14 +37,14 @@ const SECRETGARDEN_VERSION: &str = git_version!(
     fallback = "unknown"
 );
 
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(version = SECRETGARDEN_VERSION)]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum SubCommand {
     #[clap(version = SECRETGARDEN_VERSION, about = "Get an opaque value", long_about = "Get an opaque value.\n\nOpaque values cannot be generated and must be set with `set-opaque`.\n\n")]
     Opaque(OpaqueOpts),
@@ -77,7 +78,7 @@ fn run_secret_type_with_transform<'a, OptsT: OptionsType<'a>>(
     let mut value = store.get_or_generate(generator, secret_type, &opts)?;
 
     if opts.common_opts().base64 {
-        value = base64::encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
+        value = STANDARD.encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
     println!("{}", transformer(value, opts)?);
@@ -94,7 +95,7 @@ fn run_secret_type<'a, OptsT: OptionsType<'a>>(
     run_secret_type_with_transform(store, secret_type, generator, |x, _| Ok(x), opts)
 }
 
-#[derive(Clap, Clone, Debug, Serialize, Deserialize)]
+#[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct ListOpts {}
 
 fn run_list(store: &mut impl SecretStore, _: ListOpts) -> AHResult<()> {
