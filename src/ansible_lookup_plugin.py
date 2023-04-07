@@ -34,9 +34,9 @@ class LookupModule(LookupBase):
         process = subprocess.Popen(
             ['secretgarden'] + terms + [
                 (
-                    ('--{}'.format(k) if v else '')
+                    ('--{}'.format(k.replace('_', '-')) if v else '')
                     if isinstance(v, bool) else
-                    '--{}={}'.format(k, shlex_quote(str(v)))
+                    '--{}={}'.format(k.replace('_', '-'), shlex_quote(str(v)))
                 ) for (k, v) in kwargs.items()
             ],
             text = True,
