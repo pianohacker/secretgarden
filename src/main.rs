@@ -10,6 +10,7 @@ use anyhow::{anyhow, Context, Result as AHResult};
 use base64;
 use clap::Clap;
 use dirs_next;
+use git_version::git_version;
 use std::env;
 use std::fs;
 
@@ -26,8 +27,16 @@ use crate::secret_types::x509::{run_x509, X509Opts};
 use crate::ssh_agent_decryptor::SshAgentSecretContainerFile;
 use crate::types::OptionsType;
 
+const SECRETGARDEN_VERSION: &str = git_version!(
+    prefix = "",
+    suffix = "",
+    cargo_prefix = "",
+    cargo_suffix = "",
+    fallback = "unknown"
+);
+
 #[derive(Clap)]
-#[clap(version = env!("CARGO_PKG_VERSION"))]
+#[clap(version = SECRETGARDEN_VERSION)]
 struct Opts {
     #[clap(subcommand)]
     subcmd: SubCommand,
@@ -35,22 +44,22 @@ struct Opts {
 
 #[derive(Clap)]
 enum SubCommand {
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get an opaque value", long_about = "Get an opaque value.\n\nOpaque values cannot be generated and must be set with `set-opaque`.\n\n")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Get an opaque value", long_about = "Get an opaque value.\n\nOpaque values cannot be generated and must be set with `set-opaque`.\n\n")]
     Opaque(OpaqueOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate a password", long_about = "Get or generate a password.")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate a password", long_about = "Get or generate a password.")]
     Password(PasswordOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Set an opaque value", long_about = "Set an opaque value.")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Set an opaque value", long_about = "Set an opaque value.")]
     SetOpaque(SetOpaqueOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an SSH key", long_about = "Get or generate an SSH key. Will output the private key by default.")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate an SSH key", long_about = "Get or generate an SSH key. Will output the private key by default.")]
     SshKey(SshKeyOpts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate. Will output the certificate and private key by default.")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate. Will output the certificate and private key by default.")]
     X509(X509Opts),
 
-    #[clap(version = env!("CARGO_PKG_VERSION"), about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]
+    #[clap(version = SECRETGARDEN_VERSION, about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]
     InstallAnsiblePlugin,
 }
 
