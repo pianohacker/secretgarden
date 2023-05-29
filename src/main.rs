@@ -15,7 +15,11 @@ use git_version::git_version;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
+use types::ConfigType;
+use types::SecretType;
+use types::WithCommonOpts;
 
+mod config;
 mod secret_store;
 mod secret_types;
 mod ssh_agent_decryptor;
@@ -68,14 +72,16 @@ enum SubCommand {
     InstallAnsiblePlugin,
 }
 
-fn run_secret_type_with_transform<'a, OptsT: OptionsType<'a>>(
+fn run_secret_type_with_transform<'a, OptsT: OptionsType<'a>, ConfigT: ConfigType<'a>>(
     store: &mut impl SecretStore,
-    secret_type: &str,
-    generator: impl Fn(&OptsT) -> AHResult<String>,
+    config: &config::Config,
+    secret_type: SecretType,
+    generator: impl Fn(&OptsT, &ConfigT) -> AHResult<String>,
     transformer: impl Fn(String, &OptsT) -> AHResult<String>,
     opts: &OptsT,
 ) -> AHResult<()> {
-    let mut value = store.get_or_generate(generator, secret_type, &opts)?;
+    let config = config.get(secret_type, &opts.common_opts().name)?;
+    let mut value = store.get_or_generate(generator, secret_type, &opts, &config)?;
 
     if opts.common_opts().base64 {
         value = STANDARD.encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
@@ -86,13 +92,14 @@ fn run_secret_type_with_transform<'a, OptsT: OptionsType<'a>>(
     Ok(())
 }
 
-fn run_secret_type<'a, OptsT: OptionsType<'a>>(
+fn run_secret_type<'a, OptsT: OptionsType<'a>, ConfigT: ConfigType<'a>>(
     store: &mut impl SecretStore,
-    secret_type: &str,
-    generator: impl Fn(&OptsT) -> AHResult<String>,
+    config: &config::Config,
+    secret_type: SecretType,
+    generator: impl Fn(&OptsT, &ConfigT) -> AHResult<String>,
     opts: &OptsT,
 ) -> AHResult<()> {
-    run_secret_type_with_transform(store, secret_type, generator, |x, _| Ok(x), opts)
+    run_secret_type_with_transform(store, config, secret_type, generator, |x, _| Ok(x), opts)
 }
 
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
@@ -144,21 +151,35 @@ fn main() -> AHResult<()> {
     let ssh_auth_sock_path = env::var("SSH_AUTH_SOCK")
         .map_err(|_| anyhow!("SSH_AUTH_SOCK not set; ssh-agent not running?"))?;
 
+    let config = config::Config::load()?;
+
     let mut store = ContainedSecretStore::new(SshAgentSecretContainerFile::new(ssh_auth_sock_path));
 
     match opts.subcmd {
-        SubCommand::Opaque(o) => run_secret_type(&mut store, "opaque", generate_opaque, &o),
-        SubCommand::Password(o) => run_secret_type(&mut store, "password", generate_password, &o),
+        SubCommand::Opaque(o) => {
+            run_secret_type(&mut store, &config, SecretType::Opaque, generate_opaque, &o)
+        }
+        SubCommand::Password(o) => run_secret_type(
+            &mut store,
+            &config,
+            SecretType::Password,
+            generate_password,
+            &o,
+        ),
 
         SubCommand::SetOpaque(o) => run_set_opaque(&mut store, o),
         SubCommand::SshKey(o) => run_secret_type_with_transform(
             &mut store,
-            "ssh-key",
+            &config,
+            SecretType::SshKey,
             generate_ssh_key,
             transform_ssh_key,
             &o,
         ),
-        SubCommand::X509(o) => run_x509(&mut store, &o),
+        SubCommand::X509(o) => {
+            let config = config.get(SecretType::X509, &o.common_opts().name)?;
+            run_x509(&mut store, &o, &config)
+        }
 
         SubCommand::List(o) => run_list(&mut store, o),
 

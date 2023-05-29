@@ -4,20 +4,12 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-use crate::types::{CommonOpts, WithCommonOpts};
+use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 
-#[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Parser, Debug, PartialEq)]
 pub struct PasswordOpts {
     #[clap(flatten)]
-    #[serde(skip)]
     common: CommonOpts,
-    #[clap(
-        short,
-        long,
-        default_value = "32",
-        help = "Length of the generated password."
-    )]
-    length: usize,
 }
 
 impl WithCommonOpts for PasswordOpts {
@@ -26,16 +18,30 @@ impl WithCommonOpts for PasswordOpts {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct PasswordConfig {
+    #[serde(default = "PasswordConfig::default_length")]
+    length: usize,
+}
+
+impl ConfigType<'_> for PasswordConfig {}
+
+impl PasswordConfig {
+    fn default_length() -> usize {
+        32
+    }
+}
+
 const PASSWORD_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const PASSWORD_FIRST_CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-pub fn generate_password(p: &PasswordOpts) -> AHResult<String> {
+pub fn generate_password(_: &PasswordOpts, c: &PasswordConfig) -> AHResult<String> {
     let mut result: String = String::new();
     let mut rng = rand::thread_rng();
 
     result.push(PASSWORD_FIRST_CHARS[rng.gen_range(0..PASSWORD_FIRST_CHARS.len())] as char);
 
-    for _ in 1..p.length {
+    for _ in 1..c.length {
         result.push(PASSWORD_CHARS[rng.gen_range(0..PASSWORD_CHARS.len())] as char);
     }
 

@@ -4,6 +4,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SecretType {
+    Opaque,
+    Password,
+    SshKey,
+    X509,
+}
+
+impl std::fmt::Display for SecretType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                Self::Opaque => "opaque",
+                Self::Password => "password",
+                Self::SshKey => "ssh-key",
+                Self::X509 => "x509",
+            }
+        )
+    }
+}
+
 #[derive(Parser, Clone, Debug, Default, PartialEq)]
 pub struct CommonOpts {
     #[clap()]
@@ -21,18 +45,20 @@ pub struct CommonOpts {
     pub generate: GenerateOpt,
 }
 
-pub trait WithCommonOpts: Serialize {
+pub trait WithCommonOpts {
     fn common_opts(&self) -> &CommonOpts;
 }
 
-pub trait OptionsType<'a>:
-    WithCommonOpts + ShouldCauseSecretRegeneration + Deserialize<'a> + Debug
-{
-}
+pub trait OptionsType<'a>: WithCommonOpts + Debug {}
 
-impl<'a, T> OptionsType<'a> for T where
-    T: WithCommonOpts + ShouldCauseSecretRegeneration + Deserialize<'a> + Debug
-{
+impl<'a, T> OptionsType<'a> for T where T: WithCommonOpts + Debug {}
+
+pub trait ConfigType<'a>: Deserialize<'a> + Serialize + Debug + PartialEq {
+    fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool> {
+        let serialized_self = serde_json::to_value(&self)?;
+
+        Ok(serialized_self != secret.config)
+    }
 }
 
 #[derive(ValueEnum, Clone, Debug, PartialEq)]
@@ -48,28 +74,14 @@ impl Default for GenerateOpt {
     }
 }
 
-pub trait ShouldCauseSecretRegeneration {
-    fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool>;
-}
-
-impl<T> ShouldCauseSecretRegeneration for T
-where
-    T: PartialEq + Serialize + std::fmt::Debug,
-{
-    fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool> {
-        let serialized_self = serde_json::to_value(&self)?;
-
-        Ok(serialized_self != secret.options)
-    }
-}
-
 pub type SecretMap = HashMap<String, Secret>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Secret {
     // Compatibility with the old name
     #[serde(alias = "_secret_type")]
-    pub secret_type: String,
+    pub secret_type: SecretType,
     pub value: String,
-    pub options: serde_json::Value,
+    #[serde(alias = "options")]
+    pub config: serde_json::Value,
 }

@@ -3,7 +3,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::types::{GenerateOpt, OptionsType, Secret, SecretMap};
+use crate::types::{ConfigType, GenerateOpt, OptionsType, Secret, SecretMap, SecretType};
 
 const DEFAULT_FILENAME: &str = "secretgarden.dat";
 
@@ -13,16 +13,17 @@ struct SecretFile {
 }
 
 pub trait SecretStore {
-    fn get_or_generate<'a, OptsT: OptionsType<'a>>(
+    fn get_or_generate<'a, OptsT: OptionsType<'a>, ConfigT: ConfigType<'a>>(
         &mut self,
-        f: impl Fn(&OptsT) -> AHResult<String>,
-        secret_type: &str,
+        f: impl Fn(&OptsT, &ConfigT) -> AHResult<String>,
+        secret_type: SecretType,
         opts: &OptsT,
+        config: &ConfigT,
     ) -> AHResult<String>;
 
-    fn get_secret_with_options<T: DeserializeOwned>(
+    fn get_secret_with_config<T: DeserializeOwned>(
         &mut self,
-        secret_type: &str,
+        secret_type: SecretType,
         name: &str,
     ) -> AHResult<(String, T)>;
 
@@ -85,21 +86,22 @@ impl<S: SecretContainerFile> ContainedSecretStore<S> {
 }
 
 impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
-    fn get_or_generate<'a, OptsT: OptionsType<'a>>(
+    fn get_or_generate<'a, OptsT: OptionsType<'a>, ConfigT: ConfigType<'a>>(
         &mut self,
-        f: impl Fn(&OptsT) -> AHResult<String>,
-        secret_type: &str,
+        f: impl Fn(&OptsT, &ConfigT) -> AHResult<String>,
+        secret_type: SecretType,
         opts: &OptsT,
+        config: &ConfigT,
     ) -> AHResult<String> {
         let secrets = self._load_secrets()?;
         let common_opts = opts.common_opts();
-        let serialized_opts: serde_json::Value = serde_json::from_str(
-            &serde_json::to_string(opts).context("Failed to serialize options")?,
+        let serialized_config: serde_json::Value = serde_json::from_str(
+            &serde_json::to_string(config).context("Failed to serialize options")?,
         )
         .context("Failed to deserialize options")?;
 
         if let Some(secret) = secrets.get(&common_opts.name) {
-            if !opts.should_cause_secret_regeneration(secret)?
+            if !config.should_cause_secret_regeneration(secret)?
                 || common_opts.generate == GenerateOpt::Once
             {
                 return Ok(secret.value.to_string());
@@ -113,13 +115,13 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
             );
         }
 
-        let value = f(opts)?;
+        let value = f(opts, config)?;
         secrets.insert(
             common_opts.name.to_owned(),
             Secret {
-                secret_type: secret_type.to_string(),
+                secret_type,
                 value: value.to_owned(),
-                options: serialized_opts.clone(),
+                config: serialized_config.clone(),
             },
         );
         self._store_secrets()?;
@@ -127,9 +129,9 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         Ok(value)
     }
 
-    fn get_secret_with_options<T: DeserializeOwned>(
+    fn get_secret_with_config<T: DeserializeOwned>(
         &mut self,
-        secret_type: &str,
+        secret_type: SecretType,
         name: &str,
     ) -> AHResult<(String, T)> {
         let secrets = self._load_secrets()?;
@@ -147,10 +149,10 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
             ));
         }
 
-        let secret_opts: T = serde_json::from_value(secret.options.clone())
+        let secret_config: T = serde_json::from_value(secret.config.clone())
             .context("Failed to deserialize options")?;
 
-        Ok((secret.value.clone(), secret_opts))
+        Ok((secret.value.clone(), secret_config))
     }
 
     fn set_opaque(&mut self, key: String, value: String) -> AHResult<()> {
@@ -159,9 +161,9 @@ impl<S: SecretContainerFile> SecretStore for ContainedSecretStore<S> {
         secrets.insert(
             key,
             Secret {
-                secret_type: "opaque".to_string(),
+                secret_type: SecretType::Opaque,
                 value: value.clone(),
-                options: serde_json::Value::Object(serde_json::Map::new()),
+                config: serde_json::Value::Object(serde_json::Map::new()),
             },
         );
         self._store_secrets()?;

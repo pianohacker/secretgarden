@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use crate::secret_store::SecretStore;
-use crate::types::{CommonOpts, Secret, ShouldCauseSecretRegeneration, WithCommonOpts};
+use crate::types::{CommonOpts, ConfigType, Secret, SecretType, WithCommonOpts};
 
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct X509Opts {
@@ -46,47 +46,50 @@ pub struct X509Opts {
         long_help = "Output the public key. Can be used with the other output options."
     )]
     public_key: bool,
+}
 
-    #[clap(long, help = "Add a DNS Subject Alternative Name to the certificate")]
+impl WithCommonOpts for X509Opts {
+    fn common_opts(&self) -> &CommonOpts {
+        &self.common
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct X509Config {
+    // Add DNS Subject Alternative Names to the certificate
+    #[serde(default)]
     dns_san: Vec<String>,
-    #[clap(long, help = "Add an IP Subject Alternative Name to the certificate")]
+    // Add IP Subject Alternative Names to the certificate
+    #[serde(default)]
     ip_san: Vec<String>,
-    #[clap(long, help = "Mark the certificate as a certificate authority")]
+    // Mark the certificate as a certificate authority
     is_ca: bool,
-    #[clap(
-        long,
-        default_value = "365",
-        help = "Days from now to certificate expiration in days"
+    #[serde(
+        default = "X509Config::default_duration_days",
+        // Days from now to certificate expiration in days
     )]
     duration_days: u32,
-    #[clap(
-        long,
-        help = "Set subject to given common name [defaults to secret name]"
-    )]
     common_name: Option<String>,
-    #[clap(
-        long,
-        help = "Set subject to given string [defaults to CN=secret name]"
-    )]
     subject: Option<String>,
 
-    #[clap(
-        long,
-        help = "Name of a X.509 secret to serve as this certificate's CA."
-    )]
     ca: Option<String>,
 
     // Filled in internally so that generate_x509 can remain pure.
     #[serde(skip)]
-    #[clap(skip)]
     ca_contents: Option<String>,
 }
 
-impl ShouldCauseSecretRegeneration for X509Opts {
+impl X509Config {
+    fn default_duration_days() -> u32 {
+        365
+    }
+}
+
+impl ConfigType<'_> for X509Config {
     fn should_cause_secret_regeneration(&self, secret: &Secret) -> AHResult<bool> {
         let serialized_self = serde_json::to_value(&self)?;
 
-        if serialized_self != secret.options {
+        if serialized_self != secret.config {
             return Ok(true);
         }
 
@@ -94,12 +97,6 @@ impl ShouldCauseSecretRegeneration for X509Opts {
         let now = Asn1Time::days_from_now(0)?;
 
         Ok(certificate.not_after() < &now)
-    }
-}
-
-impl WithCommonOpts for X509Opts {
-    fn common_opts(&self) -> &CommonOpts {
-        &self.common
     }
 }
 
@@ -131,10 +128,10 @@ pub fn transform_x509(certificate_and_private_key: String, opts: &X509Opts) -> A
     Ok(result)
 }
 
-pub fn get_cert_name(p: &X509Opts) -> AHResult<openssl::x509::X509Name> {
+pub fn get_cert_name(x: &X509Opts, c: &X509Config) -> AHResult<openssl::x509::X509Name> {
     let mut cert_name_builder = X509NameBuilder::new()?;
 
-    match &p.subject {
+    match &c.subject {
         Some(s) => {
             let dn = rfc2253::parse_distinguished_name_str(s)
                 .map_err(|_| anyhow!("failed to parse subject"))?;
@@ -145,22 +142,22 @@ pub fn get_cert_name(p: &X509Opts) -> AHResult<openssl::x509::X509Name> {
         }
         None => cert_name_builder.append_entry_by_text(
             "CN",
-            p.common_name.as_ref().unwrap_or(&p.common_opts().name),
+            c.common_name.as_ref().unwrap_or(&x.common_opts().name),
         )?,
     }
 
     Ok(cert_name_builder.build())
 }
 
-pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
-    let cert_name = get_cert_name(p)?;
+pub fn generate_x509(p: &X509Opts, c: &X509Config) -> AHResult<String> {
+    let cert_name = get_cert_name(p, c)?;
 
     let rsa = Rsa::generate(4096)?;
     let pkey = PKey::from_rsa(rsa)?;
     let mut signing_key = pkey.clone();
 
     let now = Asn1Time::days_from_now(0)?;
-    let expire = Asn1Time::days_from_now(p.duration_days)?;
+    let expire = Asn1Time::days_from_now(c.duration_days)?;
 
     let mut cert_builder = X509::builder()?;
     cert_builder.set_version(2)?;
@@ -169,7 +166,7 @@ pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
     cert_builder.set_not_after(&expire)?;
     cert_builder.set_pubkey(&pkey)?;
 
-    if let Some(ca_contents) = &p.ca_contents {
+    if let Some(ca_contents) = &c.ca_contents {
         let certificate = X509::from_pem(ca_contents.as_ref())?;
         let private_key = PKey::private_key_from_pem(ca_contents.as_ref())?;
 
@@ -179,15 +176,15 @@ pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
         cert_builder.set_issuer_name(&cert_name)?;
     }
 
-    if p.dns_san.len() > 0 || p.ip_san.len() > 0 {
+    if c.dns_san.len() > 0 || c.ip_san.len() > 0 {
         let ctx = cert_builder.x509v3_context(None, None);
         let mut san_builder = SubjectAlternativeName::new();
 
-        for dns in &p.dns_san {
+        for dns in &c.dns_san {
             san_builder.dns(dns);
         }
 
-        for ip in &p.ip_san {
+        for ip in &c.ip_san {
             san_builder.ip(ip);
         }
 
@@ -195,7 +192,7 @@ pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
         cert_builder.append_extension(san_ext)?;
     }
 
-    if p.is_ca {
+    if c.is_ca {
         let mut basic_builder = BasicConstraints::new();
 
         basic_builder.critical();
@@ -210,35 +207,35 @@ pub fn generate_x509(p: &X509Opts) -> AHResult<String> {
         + &String::from_utf8(pkey.private_key_to_pem_pkcs8()?)?)
 }
 
-pub fn run_x509(store: &mut impl SecretStore, opts: &X509Opts) -> AHResult<()> {
-    let mut opts = opts.clone();
+pub fn run_x509(store: &mut impl SecretStore, x: &X509Opts, c: &X509Config) -> AHResult<()> {
+    let mut c = c.clone();
 
-    if let Some(ca_name) = &opts.ca {
-        let (ca_contents, ca_options): (String, X509Opts) =
-            store.get_secret_with_options("x509", &ca_name)?;
+    if let Some(ca_name) = &c.ca {
+        let (ca_contents, ca_config): (String, X509Config) =
+            store.get_secret_with_config(SecretType::X509, &ca_name)?;
 
-        if !ca_options.is_ca {
+        if !ca_config.is_ca {
             bail!("attempt to use non-CA secret {} as CA", ca_name);
         }
 
-        if ca_options.should_cause_secret_regeneration(&Secret {
-            secret_type: "x509".to_string(),
-            options: serde_json::to_value(ca_options.clone())?,
+        if ca_config.should_cause_secret_regeneration(&Secret {
+            secret_type: SecretType::X509,
             value: ca_contents.clone(),
+            config: serde_json::to_value(ca_config.clone())?,
         })? {
             bail!("CA secret {} cannot be used (expired?)", ca_name);
         }
 
-        opts.ca_contents = Some(ca_contents);
+        c.ca_contents = Some(ca_contents);
     }
 
-    let mut value = store.get_or_generate(generate_x509, "x509", &opts)?;
+    let mut value = store.get_or_generate(generate_x509, SecretType::X509, &x, &c)?;
 
-    if opts.common_opts().base64 {
+    if x.common_opts().base64 {
         value = STANDARD.encode(value.chars().map(|c| c as u8).collect::<Vec<u8>>());
     }
 
-    println!("{}", transform_x509(value, &opts)?);
+    println!("{}", transform_x509(value, &x)?);
 
     Ok(())
 }

@@ -1,47 +1,46 @@
 use anyhow::{anyhow, Context, Result as AHResult};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-use crate::types::{CommonOpts, WithCommonOpts};
+use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 use osshkeys::{cipher, keys};
 
-#[derive(ValueEnum, Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 enum SshKeyType {
     Rsa,
     Dsa,
     Ecdsa,
-    #[clap(name = "ed-25519")]
+    #[serde(rename = "ed-25519")]
     Ed25519,
 }
 
-#[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Parser, Debug, PartialEq)]
 pub struct SshKeyOpts {
     #[clap(flatten)]
-    #[serde(skip)]
     common: CommonOpts,
-    #[serde(skip)]
     #[clap(long)]
     public: bool,
-    #[clap(
-        value_enum,
-        short,
-        long,
-        default_value = "ed-25519",
-        help = "Type of the generated SSH key."
-    )]
-    type_: SshKeyType,
-    #[clap(
-        short,
-        long,
-        help = "Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys."
-    )]
-    bits: Option<usize>,
 }
 
 impl WithCommonOpts for SshKeyOpts {
     fn common_opts(&self) -> &CommonOpts {
         &self.common
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct SshKeyConfig {
+    type_: SshKeyType,
+    // Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys.
+    bits: Option<usize>,
+}
+
+impl ConfigType<'_> for SshKeyConfig {}
+
+impl SshKeyConfig {
+    fn default_type() -> SshKeyType {
+        SshKeyType::Ed25519
     }
 }
 
@@ -58,23 +57,23 @@ pub fn transform_ssh_key(private_key: String, opts: &SshKeyOpts) -> AHResult<Str
         .context("Failed to encode SSH public key")
 }
 
-pub fn generate_ssh_key(o: &SshKeyOpts) -> AHResult<String> {
-    let key_type = match &o.type_ {
+pub fn generate_ssh_key(_: &SshKeyOpts, c: &SshKeyConfig) -> AHResult<String> {
+    let key_type = match &c.type_ {
         SshKeyType::Rsa => keys::KeyType::RSA,
         SshKeyType::Dsa => keys::KeyType::DSA,
         SshKeyType::Ecdsa => keys::KeyType::ECDSA,
         SshKeyType::Ed25519 => keys::KeyType::ED25519,
     };
 
-    if o.type_ == SshKeyType::Dsa && o.bits.unwrap_or(1024) != 1024 {
+    if c.type_ == SshKeyType::Dsa && c.bits.unwrap_or(1024) != 1024 {
         return Err(anyhow!("DSA SSH keys can only have 1024 bits"));
     }
 
-    if o.type_ == SshKeyType::Ed25519 && o.bits.is_some() {
+    if c.type_ == SshKeyType::Ed25519 && c.bits.is_some() {
         return Err(anyhow!("Bits cannot be specified for ED25519 SSH keys"));
     }
 
-    let key_pair = keys::KeyPair::generate(key_type, o.bits.unwrap_or(0))
+    let key_pair = keys::KeyPair::generate(key_type, c.bits.unwrap_or(0))
         .context("Failed to generate SSH key")?;
 
     key_pair

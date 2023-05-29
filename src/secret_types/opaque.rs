@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::io::{self, Read};
 
 use crate::secret_store::SecretStore;
-use crate::types::{CommonOpts, WithCommonOpts};
+use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 
 #[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OpaqueOpts {
@@ -22,7 +22,11 @@ impl WithCommonOpts for OpaqueOpts {
     }
 }
 
-pub fn generate_opaque(_: &OpaqueOpts) -> AHResult<String> {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct OpaqueConfig {}
+impl ConfigType<'_> for OpaqueConfig {}
+
+pub fn generate_opaque(_: &OpaqueOpts, _: &OpaqueConfig) -> AHResult<String> {
     Err(anyhow!("Cannot generate opaque value"))
 }
 
