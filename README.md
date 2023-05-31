@@ -3,7 +3,7 @@
 `secretgarden` is a self-contained CLI that generates and securely stores secrets like the following:
   - Passwords
   - SSH keys
-  - TLS/X.509 certificates (coming soon)
+  - TLS/X.509 certificates
   - Opaque values
 
 It's made for sysadmins that manage a small set of systems by themselves. Secrets are kept safe
@@ -47,7 +47,7 @@ Secrets are retrieved via subcommands of `secretgarden`. For instance, to retrie
 random password named `mysql-root-password`, run:
 
 ```shell
-$ secretgarden password mysql-root-password --length 32
+$ secretgarden password mysql-root-password
 nEIn5JwTCpaIrGGpCehuP6rVbCgKLWow
 ```
 
@@ -67,6 +67,39 @@ The public key can be retrieved with `--public`:
 ```shell
 $ secretgarden ssh-key jumpbox-ssh-key --public
 ssh-ed25519 ...
+```
+
+### Changing config
+
+Each of the secret types has configuration that can be changed, ranging from password length to complex
+X.509 options. This configuration is read from `secretgarden.toml` in the current directory. For
+example:
+
+```toml
+[password.mysql-root-password]
+length = 64
+
+[ssh-key.jumpbox-ssh-key]
+type = "rsa"
+bits = 4096
+
+[x509.ca]
+is-ca = true
+```
+
+To see the options supported by a secret type, see `secretgarden SECRET-TYPE --help`:
+
+```shell
+$ secretgarden ssh-key --help
+Get or generate an SSH key.
+
+Will output the private key by default.
+
+Available config options:
+  * `type`: the type of SSH key (`rsa`, `dsa`, `ecdsa`, or `ed-25519`; defaults to `ed-25519`).
+  * `bits`: the number of bits in the key (only supported for `rsa` and `ecdsa` keys).
+
+...
 ```
 
 ### Storing opaque values

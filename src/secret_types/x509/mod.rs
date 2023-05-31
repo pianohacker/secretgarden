@@ -17,6 +17,20 @@ use crate::secret_store::SecretStore;
 use crate::types::{CommonOpts, ConfigType, Secret, SecretType, WithCommonOpts};
 
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
+/// Get or generate an X.509 certificate.
+///
+/// Will output the certificate and private key by default.
+///
+/// Available config options:
+///   * `dns-sans`: an optional array of DNS Subject Alternative Names.
+///   * `ip-sans`: an optional array of IP Address Subject Alternative Names.
+///   * `is-ca`: whether this certificate should be marked as a Certificate Authority.
+///   * `duration-days`: how many days from now this certificate should expire (defaults to 365).
+///   * `subject`: the subject of this certificate.
+///   * `common-name`: a shortcut for `subject = "CN = ..."` (defaults to the name of the secret).
+///   * `ca`: the name of another existing `x509` certificate to sign this certificate. The other
+///           certificate must be unexpired and marked with `is-ca = true`.
+#[clap(verbatim_doc_comment)]
 pub struct X509Opts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -55,14 +69,16 @@ impl WithCommonOpts for X509Opts {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub struct X509Config {
     // Add DNS Subject Alternative Names to the certificate
     #[serde(default)]
-    dns_san: Vec<String>,
+    dns_sans: Vec<String>,
     // Add IP Subject Alternative Names to the certificate
     #[serde(default)]
-    ip_san: Vec<String>,
+    ip_sans: Vec<String>,
     // Mark the certificate as a certificate authority
+    #[serde(default)]
     is_ca: bool,
     #[serde(
         default = "X509Config::default_duration_days",
@@ -176,15 +192,15 @@ pub fn generate_x509(p: &X509Opts, c: &X509Config) -> AHResult<String> {
         cert_builder.set_issuer_name(&cert_name)?;
     }
 
-    if c.dns_san.len() > 0 || c.ip_san.len() > 0 {
+    if c.dns_sans.len() > 0 || c.ip_sans.len() > 0 {
         let ctx = cert_builder.x509v3_context(None, None);
         let mut san_builder = SubjectAlternativeName::new();
 
-        for dns in &c.dns_san {
+        for dns in &c.dns_sans {
             san_builder.dns(dns);
         }
 
-        for ip in &c.ip_san {
+        for ip in &c.ip_sans {
             san_builder.ip(ip);
         }
 

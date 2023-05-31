@@ -100,6 +100,15 @@ function assert_sg_fails_matching() {
 	assert_match "$error_text" "$pattern"
 }
 
+function config() {
+	touch secretgarden.toml
+	if grep "$1" secretgarden.toml; then
+		sed -i -e '/'$1'/{s/.*/'$1'='$2'/}' secretgarden.toml
+	else
+		echo "$1=$2" >> secretgarden.toml
+	fi
+}
+
 ## Tests
 function test_setting_opaque() {
 	assert_sg set-opaque opaque1 opaqueval
@@ -121,7 +130,7 @@ function test_setting_opaque_from_base64() {
 }
 
 function test_setting_opaque_from_base64_fails_with_concise_error() {
-	assert_sg_fails_matchingA" '^Error: .* base64' "set-opaque opaque1 --base64 
+	echo '!' | assert_sg_fails_matching " '^Error: .* base64' " set-opaque opaque1 --base64 
 }
 
 function test_getting_opaque_as_base64() {
@@ -136,20 +145,25 @@ function test_opaque_cannot_be_generated() {
 }
 
 function test_password_generation_options() {
-	assert_sg_match '^.{12}$' password password1 --length 12
-	assert_sg_match '^.{32}$' password password2 --length 32
+	config password.password1.length 12
+	assert_sg_match '^.{12}$' password password1
+	config password.password2.length 32
+	assert_sg_match '^.{32}$' password password2
 }
 
 function test_password_persists() {
-	password="$($SECRETGARDEN password password1 --length 12)"
+	config password.password1.length 12
+	password="$($SECRETGARDEN password password1)"
 	assert_match "$password" '^.{12}$'
-	assert_sg_equal "$password" password password1 --length 12
+	assert_sg_equal "$password" password password1
 }
 
 function test_password_converges() {
-	password="$($SECRETGARDEN password password1 --length 12)"
-	assert_sg_equal "$password" password password1 --length 12
-	password_converged="$($SECRETGARDEN password password1 --length 13)"
+	config password.password1.length 12
+	password="$($SECRETGARDEN password password1)"
+	assert_sg_equal "$password" password password1
+	config password.password1.length 13
+	password_converged="$($SECRETGARDEN password password1)"
 	assert_match "$password_converged" '^.{13}$'
 	assert_not_equal "$password_converged" "$password"
 }
@@ -161,9 +175,11 @@ function test_password_generation_can_be_disabled() {
 }
 
 function test_password_convergence_can_be_disabled() {
-	password="$($SECRETGARDEN password password1 --length 12)"
-	assert_sg_equal "$password" password password1 --length 12
-	assert_sg_equal "$password" password password1 --generate=once --length 13
+	config password.password1.length 12
+	assert_sg password password1 > password1
+	assert_sg_equal "$(cat password1)" password password1
+	config password.password1.length 13
+	assert_sg_equal "$(cat password1)" password password1 --generate=once
 }
 
 function test_ssh_key_separate_generation() {
@@ -179,10 +195,14 @@ function test_ssh_key_separate_generation() {
 
 function test_ssh_keys_can_be_generated_with_any_type() {
 	# This could be a loop, but SSH key type IDs have a lot of subtle variation...
-	assert_match "$($SECRETGARDEN ssh-key key-rsa --public --type rsa)" "^ssh-rsa "
-	assert_match "$($SECRETGARDEN ssh-key key-dsa --public --type dsa)" "^ssh-dss "
-	assert_match "$($SECRETGARDEN ssh-key key-ecdsa --public --type ecdsa)" "^ecdsa-sha2-nistp256 "
-	assert_match "$($SECRETGARDEN ssh-key key-ed-25519 --public --type ed-25519)" "^ssh-ed25519 "
+	config ssh-key.key-rsa.type "'rsa'"
+	assert_match "$($SECRETGARDEN ssh-key key-rsa --public)" "^ssh-rsa "
+	config ssh-key.key-dsa.type "'dsa'"
+	assert_match "$($SECRETGARDEN ssh-key key-dsa --public)" "^ssh-dss "
+	config ssh-key.key-ecdsa.type "'ecdsa'"
+	assert_match "$($SECRETGARDEN ssh-key key-ecdsa --public)" "^ecdsa-sha2-nistp256 "
+	config ssh-key.key-ed25519.type "'rsa'"
+	assert_match "$($SECRETGARDEN ssh-key key-ed-25519 --public)" "^ssh-ed25519 "
 }
 
 function _assert_ssh_key_bits() {
@@ -190,16 +210,26 @@ function _assert_ssh_key_bits() {
 }
 
 function test_ssh_keys_can_be_generated_with_custom_bits() {
-	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-rsa --public --type rsa --bits 4096)" 4096
-	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-ecdsa --public --type ecdsa --bits 521)" 521
+	config ssh-key.key-rsa.type "'rsa'"
+	config ssh-key.key-rsa.bits 4096
+	config ssh-key.key-ecdsa.type "'ecdsa'"
+	config ssh-key.key-ecdsa.bits 521
+	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-rsa --public)" 4096
+	_assert_ssh_key_bits "$($SECRETGARDEN ssh-key key-ecdsa --public)" 521
 }
 
 function test_ssh_key_types_with_fixed_lengths_reject_custom_bits() {
-	assert_sg ssh-key key-ed25519 --type ed-25519
-	assert_sg_fails_matching "cannot be specified" ssh-key key-ed25519-256 --type ed-25519 --bits 256
+	config ssh-key.key-ed25519.type "'ed-25519'"
+	assert_sg ssh-key key-ed25519
+	config ssh-key.key-ed25519-256.type "'ed-25519'"
+	config ssh-key.key-ed25519-256.bits 256
+	assert_sg_fails_matching "cannot be specified" ssh-key key-ed25519-256
 
-	assert_sg ssh-key key-dsa --type dsa
-	assert_sg_fails_matching "only have 1024 bits" ssh-key key-dsa-2048 --type dsa --bits 2048
+	config ssh-key.key-dsa.type "'dsa'"
+	assert_sg ssh-key key-dsa
+	config ssh-key.key-dsa-2048.type "'dsa'"
+	config ssh-key.key-dsa-2048.bits 2048
+	assert_sg_fails_matching "only have 1024 bits" ssh-key key-dsa-2048
 }
 
 function test_values_not_stored_in_plaintext() {
@@ -305,19 +335,22 @@ function test_x509_not_before_and_not_before_default_to_a_year_apart() {
 }
 
 function test_x509_can_adjust_duration() {
-	assert_sg x509 cert1 --duration-days 52 > cert.pem
+	config x509.cert1.duration-days 52
+	assert_sg x509 cert1 > cert.pem
 	today="$(LC_ALL=C TZ=UTC date +"%b %e.*%Y.*")"
 	fifty_two_days="$(LC_ALL=C TZ=UTC date +"%b %e.*%Y.*" -d "52 days")"
 	assert_match "$(LC_ALL=C openssl x509 -noout -dates < cert.pem)" "notBefore=$today"$'\n'"notAfter=$fifty_two_days"
 }
 
 function test_x509_regenerates_when_expired() {
-	assert_sg x509 cert1 --duration-days 1 > cert1a.pem
-	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg x509 cert1 --duration-days 1 > cert1b.pem
+	config x509.cert1.duration-days 1
+	assert_sg x509 cert1 > cert1a.pem
+	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg x509 cert1 > cert1b.pem
 	diff cert1a.pem cert1b.pem > /dev/null || _assert_failed "unexpired certificate should not regenerate"
 
-	assert_sg x509 cert2 --duration-days 0 > cert2a.pem
-	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg x509 cert2 --duration-days 0 > cert2b.pem
+	config x509.cert2.duration-days 0
+	assert_sg x509 cert2 > cert2a.pem
+	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg x509 cert2 > cert2b.pem
 
 	diff cert2a.pem cert2b.pem > /dev/null && _assert_failed "expired certificate should regenerate"
 }
@@ -356,56 +389,67 @@ function test_x509_can_output_public_key_only() {
 
 function test_x509_has_no_sans_by_default() {
 	assert_sg x509 cert1 > cert.pem
-	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "No extensions"
+	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem 2>&1)" "No extensions"
 }
 
 function test_x509_can_have_dns_sans() {
-	assert_sg x509 cert1 --dns-san host.domain.example > cert.pem
+	config x509.cert1.dns-sans '["host.domain.example"]'
+	assert_sg x509 cert1 > cert.pem
 	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example"
 
-	assert_sg x509 cert2 --dns-san host.domain.example host.example.domain > cert.pem
+	config x509.cert2.dns-sans '["host.domain.example", "host.example.domain"]'
+	assert_sg x509 cert2 > cert.pem
 	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example, DNS:host.example.domain"
 }
 
 function test_x509_can_have_ip_sans() {
-	assert_sg x509 cert1 --ip-san 127.0.0.1 > cert.pem
+	config x509.cert1.ip-sans '["127.0.0.1"]'
+	assert_sg x509 cert1 > cert.pem
 	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "IP Address:127.0.0.1"
 
-	assert_sg x509 cert2 --ip-san 127.0.0.1 ffee::1 > cert.pem
+	config x509.cert2.ip-sans '["127.0.0.1", "ffee::1"]'
+	assert_sg x509 cert2 > cert.pem
 	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "IP Address:127.0.0.1, IP Address:FFEE:0:0:0:0:0:0:1"
 }
 
 function test_x509_can_have_mixed_sans() {
-	assert_sg x509 cert2 --dns-san host.domain.example --ip-san 127.0.0.1 ffee::1 --dns-san host.example.domain > cert.pem
+	config x509.cert2.dns-sans '["host.domain.example", "host.example.domain"]'
+	config x509.cert2.ip-sans '["127.0.0.1", "ffee::1"]'
+	assert_sg x509 cert2 > cert.pem
 	assert_match "$(openssl x509 -noout -ext subjectAltName < cert.pem)" "DNS:host.domain.example, DNS:host.example.domain, IP Address:127.0.0.1, IP Address:FFEE:0:0:0:0:0:0:1"
 }
 
 function test_x509_common_name_can_be_changed() {
-	assert_sg x509 cert1 --common-name "Common name" > cert.pem
+	config x509.cert1.common-name "'Common name'"
+	assert_sg x509 cert1 > cert.pem
 	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Common name"
 	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Common name"
 }
 
 function test_x509_subject_can_be_changed() {
-	assert_sg x509 cert1 --subject "CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE" > cert.pem
+	config x509.cert1.subject "'CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE'"
+	assert_sg x509 cert1 > cert.pem
 	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
 	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
 }
 
 function test_x509_is_not_a_ca_by_default() {
 	assert_sg x509 cert1 > cert.pem
-	assert_match "$(openssl x509 -noout -ext basicConstraints < cert.pem)" "No extensions"
+	assert_match "$(openssl x509 -noout -ext basicConstraints < cert.pem 2>&1)" "No extensions"
 }
 
 function test_x509_can_be_a_ca() {
-	assert_sg x509 cert1 --is-ca > cert.pem
+	config x509.ca.is-ca true
+	assert_sg x509 ca > cert.pem
 	assert_match "$(openssl x509 -noout -ext basicConstraints < cert.pem)" "critical
     CA:TRUE"
 }
 
 function test_x509_can_create_a_certificate_signed_by_a_ca() {
-	assert_sg x509 ca --is-ca --certificate > ca.pem
-	assert_sg x509 child --ca ca --certificate > child.pem
+	config x509.ca.is-ca true
+	assert_sg x509 ca --certificate > ca.pem
+	config x509.child.ca "'ca'"
+	assert_sg x509 child --certificate > child.pem
 
 	assert_match "$(openssl verify -CAfile ca.pem child.pem)" "OK"
 	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN = ca"
@@ -413,17 +457,24 @@ function test_x509_can_create_a_certificate_signed_by_a_ca() {
 
 function test_x509_only_uses_cas_that_are_cas() {
 	assert_sg x509 ca
-	assert_sg_fails_matching "CA" x509 child --ca ca
+	config x509.child.ca "'ca'"
+	assert_sg_fails_matching "CA" x509 child
 }
 
 function test_x509_fails_when_ca_expired() {
-	assert_sg x509 ca --duration-days 0 --is-ca > ca1a.pem
-	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg_fails_matching "expired" x509 child --ca ca
+	config x509.ca.duration-days 0
+	config x509.ca.is-ca true
+	assert_sg x509 ca > ca1a.pem
+	config x509.child.ca "'ca'"
+	SECRETGARDEN="faketime -f +2s $SECRETGARDEN" assert_sg_fails_matching "expired" x509 child
 }
 
 function test_x509_issuer_correct_for_ca_with_custom_subject() {
-	assert_sg x509 ca --is-ca --subject "CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE" > ca.pem
-	assert_sg x509 child --ca ca > child.pem
+	config x509.ca.is-ca true
+	config x509.ca.subject "'CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE'"
+	assert_sg x509 ca > ca.pem
+	config x509.child.ca "'ca'"
+	assert_sg x509 child > child.pem
 	assert_match "$(openssl x509 -noout -subject < child.pem)" "subject=CN = child"
 	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
 }
@@ -431,7 +482,7 @@ function test_x509_issuer_correct_for_ca_with_custom_subject() {
 function test_output_compatible_with_previous_versions() {
 	IFS=$'\n'
 
-	for version_archive in $script_dir/assets/versions/*.tar.xz; do
+	for version_archive in $(ls -1 "$script_dir/assets/versions/"); do
 		tar xf $version_archive
 		pushd $(basename ${version_archive%%.tar.*})
 
@@ -439,6 +490,7 @@ function test_output_compatible_with_previous_versions() {
 		ssh-add id
 
 		for output in $(cd outputs; ls); do
+			
 			diff -u outputs/"$output" <(eval "$SECRETGARDEN $output") || exit 1
 		done
 

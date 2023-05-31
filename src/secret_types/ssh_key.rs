@@ -7,6 +7,7 @@ use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 use osshkeys::{cipher, keys};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -16,9 +17,19 @@ enum SshKeyType {
 }
 
 #[derive(Parser, Debug, PartialEq)]
+/// Get or generate an SSH key.
+///
+/// Will output the private key by default.
+///
+/// Available config options:
+///   * `type`: the type of SSH key (`rsa`, `dsa`, `ecdsa`, or `ed-25519`; defaults to `ed-25519`).
+///   * `bits`: the number of bits in the key (only supported for `rsa` and `ecdsa` keys).
+#[clap(verbatim_doc_comment)]
 pub struct SshKeyOpts {
     #[clap(flatten)]
     common: CommonOpts,
+
+    /// Output the private, rather than public key.
     #[clap(long)]
     public: bool,
 }
@@ -31,6 +42,7 @@ impl WithCommonOpts for SshKeyOpts {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SshKeyConfig {
+    #[serde(rename = "type", default = "SshKeyConfig::default_type")]
     type_: SshKeyType,
     // Number of bits in the generated SSH key. Cannot be changed for ED25519 or DSA keys.
     bits: Option<usize>,

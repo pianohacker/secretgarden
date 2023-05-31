@@ -40,7 +40,7 @@ pub struct CommonOpts {
         long,
         default_value = "converge",
         help = "Whether to generate the secret if needed",
-        long_help = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if different options are used or it is no longer valid."
+        long_help = "Whether to generate the secret if needed. `converge` will regenerate an existing secret if it has expired or a different config is used."
     )]
     pub generate: GenerateOpt,
 }

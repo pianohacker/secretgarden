@@ -10,6 +10,9 @@ use crate::secret_store::SecretStore;
 use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 
 #[derive(Parser, Debug, Serialize, Deserialize, PartialEq)]
+/// Get an existing opaque value.
+///
+/// Opaque values cannot be generated and must be set with `set-opaque`.
 pub struct OpaqueOpts {
     #[clap(flatten)]
     #[serde(skip)]
@@ -31,6 +34,7 @@ pub fn generate_opaque(_: &OpaqueOpts, _: &OpaqueConfig) -> AHResult<String> {
 }
 
 #[derive(Parser)]
+/// Set an opaque value.
 pub struct SetOpaqueOpts {
     #[clap(help = "Name of the secret to set")]
     name: String,

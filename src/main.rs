@@ -50,25 +50,26 @@ struct Opts {
 
 #[derive(Parser)]
 enum SubCommand {
-    #[clap(version = SECRETGARDEN_VERSION, about = "Get an opaque value", long_about = "Get an opaque value.\n\nOpaque values cannot be generated and must be set with `set-opaque`.\n\n")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     Opaque(OpaqueOpts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate a password", long_about = "Get or generate a password.")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     Password(PasswordOpts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "Set an opaque value", long_about = "Set an opaque value.")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     SetOpaque(SetOpaqueOpts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate an SSH key", long_about = "Get or generate an SSH key. Will output the private key by default.")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     SshKey(SshKeyOpts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "Get or generate an X.509 certificate", long_about = "Get or generate an X.509 certificate. Will output the certificate and private key by default.")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     X509(X509Opts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "List all known secrets", long_about = "List all known secrets.")]
+    #[clap(version = SECRETGARDEN_VERSION)]
     List(ListOpts),
 
-    #[clap(version = SECRETGARDEN_VERSION, about = "Install the Ansible plugin to your home directory", long_about = "Install the Ansible plugin to your home directory.")]
+    /// Install the Ansible plugin to your home directory.
+    #[clap(version = SECRETGARDEN_VERSION)]
     InstallAnsiblePlugin,
 }
 
@@ -103,6 +104,7 @@ fn run_secret_type<'a, OptsT: OptionsType<'a>, ConfigT: ConfigType<'a>>(
 }
 
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
+/// List all known secrets.
 pub struct ListOpts {}
 
 fn run_list(store: &mut impl SecretStore, _: ListOpts) -> AHResult<()> {

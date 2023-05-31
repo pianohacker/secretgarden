@@ -7,6 +7,11 @@ use std::fmt::Debug;
 use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 
 #[derive(Parser, Debug, PartialEq)]
+/// Get or generate a password.
+///
+/// Available config options:
+///   * `length`: the length of the generated password (defaults to 32).
+#[clap(verbatim_doc_comment)]
 pub struct PasswordOpts {
     #[clap(flatten)]
     common: CommonOpts,
