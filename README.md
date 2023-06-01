@@ -102,9 +102,6 @@ $ secretgarden x509 example-child --certifcate --private-key
 -----BEGIN CERTIFICATE-----
 ...
 -----END CERTIFICATE-----
------BEGIN CERTIFICATE-----
-...
------END CERTIFICATE-----
 -----BEGIN PRIVATE KEY-----
 ...
 -----END PRIVATE KEY-----
