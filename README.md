@@ -53,6 +53,8 @@ nEIn5JwTCpaIrGGpCehuP6rVbCgKLWow
 
 If this password doesn't exist, it will be generated and stored.
 
+#### SSH keys
+
 SSH keys can be generated similarly:
 
 ```shell
@@ -67,6 +69,45 @@ The public key can be retrieved with `--public`:
 ```shell
 $ secretgarden ssh-key jumpbox-ssh-key --public
 ssh-ed25519 ...
+```
+
+### X.509 certificates
+
+X.509 certificates can be fetched in multiple formats and signed by other secretgarden-managed
+certificates.
+
+If a certficate is generated without a CA, it will be self signed. If a CA is configured as
+follows:
+
+```toml
+[x509.example-ca]
+is-ca = true
+
+[x509.example-child]
+ca = "example-ca"
+```
+
+then `example-child` will be signed by `example-ca`. Note that `example-ca` must be generated first
+and must be unexpired. 
+
+These certificates and their public/private keys may be retrieved one at a time, or all at once. For
+instance:
+
+```shell
+$ secretgarden x509 example-child --certficate
+-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+$ secretgarden x509 example-child --certifcate --private-key
+-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----
 ```
 
 ### Changing config
