@@ -5,9 +5,9 @@ use base64::engine::general_purpose::STANDARD;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use bincode;
 use byteorder::{BigEndian, ByteOrder};
-use crypto::{digest::Digest, sha2::Sha256};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sodiumoxide::crypto::secretbox;
 use ssh_agent::proto as ssh_agent_proto;
 use std::fs::File;
@@ -134,9 +134,8 @@ impl SshAgentSecretContainerFile {
             })
             .map(|i| {
                 let mut hasher = Sha256::new();
-                hasher.input(&i.pubkey_blob);
-                let mut fingerprint = vec![0; hasher.output_bytes()];
-                hasher.result(&mut fingerprint);
+                hasher.update(&i.pubkey_blob);
+                let fingerprint = hasher.finalize().as_slice().to_vec();
 
                 HashedSshIdentity {
                     fingerprint,
