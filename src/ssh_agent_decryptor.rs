@@ -254,8 +254,11 @@ impl SecretContainerFile for SshAgentSecretContainerFile {
     }
 
     fn encrypt<P: AsRef<Path>>(&mut self, path: P, data: Vec<u8>) -> AHResult<()> {
-        let mut f =
-            tempfile::NamedTempFile::new().context("Failed to open temporary file for output")?;
+        let mut f = match path.as_ref().parent() {
+            Some(d) => tempfile::NamedTempFile::new_in(d),
+            None => tempfile::NamedTempFile::new(),
+        }
+        .context("Failed to open temporary file for output")?;
 
         let mut rng = rand::thread_rng();
 
