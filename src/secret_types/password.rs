@@ -24,6 +24,7 @@ impl WithCommonOpts for PasswordOpts {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct PasswordConfig {
     #[serde(default = "PasswordConfig::default_length")]
     length: usize,

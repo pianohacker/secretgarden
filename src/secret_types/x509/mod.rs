@@ -69,7 +69,7 @@ impl WithCommonOpts for X509Opts {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct X509Config {
     // Add DNS Subject Alternative Names to the certificate
     #[serde(default)]

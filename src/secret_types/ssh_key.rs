@@ -7,7 +7,7 @@ use crate::types::{CommonOpts, ConfigType, WithCommonOpts};
 use osshkeys::{cipher, keys};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 enum SshKeyType {
     Rsa,
     Dsa,
@@ -41,6 +41,7 @@ impl WithCommonOpts for SshKeyOpts {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SshKeyConfig {
     #[serde(rename = "type", default = "SshKeyConfig::default_type")]
     type_: SshKeyType,

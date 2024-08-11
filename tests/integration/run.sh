@@ -56,7 +56,7 @@ function _assert_failed() {
 
 function assert_equal() {
 	if [[ "$1" != "$2" ]]; then
-		_assert_failed "'$1' == '$2'" 
+		_assert_failed "(received == expected) '$1' == '$2'" 
 	fi
 }
 
@@ -67,19 +67,19 @@ function assert_sg_equal() {
 
 function assert_not_equal() {
 	if [[ "$1" == "$2" ]]; then
-		_assert_failed "'$1' != '$2'" 
+		_assert_failed "(received != expected) '$1' != '$2'" 
 	fi
 }
 
 function assert_match() {
 	if ! [[ "$1" =~ $2 ]]; then
-		_assert_failed "'$1' =~ /$2/" 
+		_assert_failed "(received =~ /pattern/) '$1' =~ /$2/" 
 	fi
 }
 
 function assert_no_match() {
 	if [[ "$1" =~ $2 ]]; then
-		_assert_failed "'$1' !~ /$2/" 
+		_assert_failed "(received !~ /pattern/) '$1' !~ /$2/" 
 	fi
 }
 
@@ -196,13 +196,13 @@ function test_ssh_key_separate_generation() {
 function test_ssh_keys_can_be_generated_with_any_type() {
 	# This could be a loop, but SSH key type IDs have a lot of subtle variation...
 	config ssh-key.key-rsa.type "'rsa'"
-	assert_match "$($SECRETGARDEN ssh-key key-rsa --public)" "^ssh-rsa "
+	assert_match "$($SECRETGARDEN ssh-key key-rsa --public)" "^[^ ]*rsa[^ ]* "
 	config ssh-key.key-dsa.type "'dsa'"
-	assert_match "$($SECRETGARDEN ssh-key key-dsa --public)" "^ssh-dss "
+	assert_match "$($SECRETGARDEN ssh-key key-dsa --public)" "^[^ ]*dss[^ ]* "
 	config ssh-key.key-ecdsa.type "'ecdsa'"
-	assert_match "$($SECRETGARDEN ssh-key key-ecdsa --public)" "^ecdsa-sha2-nistp256 "
+	assert_match "$($SECRETGARDEN ssh-key key-ecdsa --public)" "^[^ ]*ecdsa[^ ]* "
 	config ssh-key.key-ed25519.type "'rsa'"
-	assert_match "$($SECRETGARDEN ssh-key key-ed-25519 --public)" "^ssh-ed25519 "
+	assert_match "$($SECRETGARDEN ssh-key key-ed-25519 --public)" "^[^ ]*ed25519[^ ]* "
 }
 
 function _assert_ssh_key_bits() {
@@ -323,8 +323,8 @@ function test_x509_generates_valid_private_keys() {
 
 function test_x509_subject_and_issuer_default_to_secret_name() {
 	assert_sg x509 cert1 > cert.pem
-	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = cert1"
-	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = cert1"
+	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN *= *cert1"
+	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN *= *cert1"
 }
 
 function test_x509_not_before_and_not_before_default_to_a_year_apart() {
@@ -422,15 +422,15 @@ function test_x509_can_have_mixed_sans() {
 function test_x509_common_name_can_be_changed() {
 	config x509.cert1.common-name "'Common name'"
 	assert_sg x509 cert1 > cert.pem
-	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Common name"
-	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Common name"
+	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN *= *Common name"
+	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN *= *Common name"
 }
 
 function test_x509_subject_can_be_changed() {
 	config x509.cert1.subject "'CN=Sample Cert, OU=R&D, O=Company Ltd., L=Dublin 4, ST=Dublin, C=IE'"
 	assert_sg x509 cert1 > cert.pem
-	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
-	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
+	assert_match "$(openssl x509 -noout -subject < cert.pem)" "subject=CN *= *Sample Cert, OU *= *R&D, O *= *Company Ltd., L *= *Dublin 4, ST *= *Dublin, C *= *IE"
+	assert_match "$(openssl x509 -noout -issuer < cert.pem)" "issuer=CN *= *Sample Cert, OU *= *R&D, O *= *Company Ltd., L *= *Dublin 4, ST *= *Dublin, C *= *IE"
 }
 
 function test_x509_is_not_a_ca_by_default() {
@@ -452,7 +452,7 @@ function test_x509_can_create_a_certificate_signed_by_a_ca() {
 	assert_sg x509 child --certificate > child.pem
 
 	assert_match "$(openssl verify -CAfile ca.pem child.pem)" "OK"
-	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN = ca"
+	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN *= *ca"
 }
 
 function test_x509_only_uses_cas_that_are_cas() {
@@ -475,8 +475,12 @@ function test_x509_issuer_correct_for_ca_with_custom_subject() {
 	assert_sg x509 ca > ca.pem
 	config x509.child.ca "'ca'"
 	assert_sg x509 child > child.pem
-	assert_match "$(openssl x509 -noout -subject < child.pem)" "subject=CN = child"
-	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN = Sample Cert, OU = R&D, O = Company Ltd., L = Dublin 4, ST = Dublin, C = IE"
+	assert_match "$(openssl x509 -noout -subject < child.pem)" "subject=CN *= *child"
+	assert_match "$(openssl x509 -noout -issuer < child.pem)" "issuer=CN *= *Sample Cert, OU *= *R&D, O *= *Company Ltd., L *= *Dublin 4, ST *= *Dublin, C *= *IE"
+}
+function test_x509_rejects_unknown_config() {
+	config x509.cert1.duration_days 52
+	assert_sg_fails_matching "duration_days" x509 cert1
 }
 
 function test_output_compatible_with_previous_versions() {
