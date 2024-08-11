@@ -1,6 +1,6 @@
 [package]
 name = "secretgarden"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Jesse Weaver <pianohacker@gmail.com>"]
 edition = "2018"
 description = "tool for generating and securely storing secrets"
